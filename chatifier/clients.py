@@ -27,7 +27,7 @@ class BaseClient(ABC):
         self.model = model
         self.verbose = verbose
         self.history: List[Dict[str, str]] = []
-        self.client = httpx.Client(timeout=30.0, verify=False, follow_redirects=True)
+        self.client = httpx.Client(timeout=600.0, verify=False, follow_redirects=True)  # 10 minutes for local models
     
     def __del__(self):
         """Clean up HTTP client."""
