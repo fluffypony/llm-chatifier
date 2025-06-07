@@ -180,9 +180,28 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                                 working_token = env_token
                                 break
                             except Exception as auth_e:
-                                if verbose:
-                                    click.echo(f"Key {i+1} failed: {str(auth_e)[:100]}...")
-                                continue
+                                error_msg = str(auth_e).lower()
+                                
+                                # Check if this is a model requirement error (auth worked, but model needed)
+                                if any(phrase in error_msg for phrase in ['no models provided', 'model required', 'must specify model']):
+                                    if verbose:
+                                        click.echo(f"Key {i+1} authenticated but requires model specification")
+                                    working_token = env_token
+                                    # Don't break - we'll handle model selection later
+                                    break
+                                
+                                # Check if this is an auth error (try next key)
+                                elif any(phrase in error_msg for phrase in ['auth', 'token', 'unauthorized', 'api key', 'invalid jwt', 'credentials']):
+                                    if verbose:
+                                        click.echo(f"Key {i+1} authentication failed: {str(auth_e)[:100]}...")
+                                    continue
+                                
+                                # Other errors (network, etc.) - stop trying
+                                else:
+                                    if verbose:
+                                        click.echo(f"API error with key {i+1}: {str(auth_e)[:100]}...")
+                                    click.echo(f"API error: {auth_e}")
+                                    sys.exit(1)
                 
                 # If no env tokens worked, prompt for manual input
                 if not working_token:
