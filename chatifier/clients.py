@@ -43,6 +43,11 @@ class BaseClient(ABC):
         """Test connection to the API. Raises exception on failure."""
         pass
     
+    @abstractmethod
+    def get_models(self) -> List[str]:
+        """Get list of available models. Returns empty list if not supported."""
+        pass
+    
     def clear_history(self):
         """Clear conversation history."""
         self.history.clear()
@@ -68,6 +73,23 @@ class OpenAIClient(BaseClient):
         
         if response.status_code >= 400:
             raise Exception(extract_error_message(response))
+    
+    def get_models(self) -> List[str]:
+        """Get available models from OpenAI-compatible API."""
+        url = f"{self.base_url}/v1/models"
+        response = self.client.get(url, headers=self.get_headers())
+        
+        if response.status_code >= 400:
+            logger.warning(f"Failed to get models: {extract_error_message(response)}")
+            return ["gpt-3.5-turbo", "gpt-4"]  # Fallback models
+        
+        try:
+            data = response.json()
+            models = [model["id"] for model in data.get("data", [])]
+            return sorted(models) if models else ["gpt-3.5-turbo", "gpt-4"]
+        except Exception as e:
+            logger.warning(f"Failed to parse models response: {e}")
+            return ["gpt-3.5-turbo", "gpt-4"]
     
     def send_message(self, text: str) -> str:
         """Send message using OpenAI chat completions format."""
@@ -113,6 +135,23 @@ class OllamaClient(BaseClient):
         
         if response.status_code >= 400:
             raise Exception(extract_error_message(response))
+    
+    def get_models(self) -> List[str]:
+        """Get available models from Ollama API."""
+        url = f"{self.base_url}/api/tags"
+        response = self.client.get(url)
+        
+        if response.status_code >= 400:
+            logger.warning(f"Failed to get models: {extract_error_message(response)}")
+            return ["llama2"]  # Fallback model
+        
+        try:
+            data = response.json()
+            models = [model["name"] for model in data.get("models", [])]
+            return sorted(models) if models else ["llama2"]
+        except Exception as e:
+            logger.warning(f"Failed to parse models response: {e}")
+            return ["llama2"]
     
     def send_message(self, text: str) -> str:
         """Send message using Ollama generate format."""
@@ -182,6 +221,17 @@ class AnthropicClient(BaseClient):
         
         if response.status_code >= 400:
             raise Exception(extract_error_message(response))
+    
+    def get_models(self) -> List[str]:
+        """Get available Anthropic models (hardcoded list)."""
+        return [
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229", 
+            "claude-3-haiku-20240307",
+            "claude-2.1",
+            "claude-2.0",
+            "claude-instant-1.2"
+        ]
     
     def send_message(self, text: str) -> str:
         """Send message using Anthropic messages format."""
@@ -254,6 +304,10 @@ class GenericClient(BaseClient):
         
         if response.status_code >= 500:
             raise Exception(f"Server error: {response.status_code}")
+    
+    def get_models(self) -> List[str]:
+        """Get available models (no standard for generic APIs)."""
+        return []  # Generic APIs don't have a standard models endpoint
     
     def send_message(self, text: str) -> str:
         """Send message using generic patterns."""

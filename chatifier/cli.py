@@ -90,7 +90,46 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 click.echo(f"Connection failed: {e}")
                 sys.exit(1)
         
-        # 4. Start chat UI
+        # 4. Handle model selection if no model specified
+        if not client.model:
+            models = client.get_models()
+            if models:
+                if len(models) == 1:
+                    client.model = models[0]
+                    if verbose:
+                        click.echo(f"Using model: {client.model}")
+                else:
+                    click.echo("Available models:")
+                    for i, model_name in enumerate(models[:10], 1):  # Show max 10 models
+                        click.echo(f"  {i}. {model_name}")
+                    
+                    if len(models) > 10:
+                        click.echo(f"  ... and {len(models) - 10} more")
+                    
+                    while True:
+                        try:
+                            choice = click.prompt("Select model (number or name)", type=str)
+                            
+                            # Try as number first
+                            try:
+                                model_idx = int(choice) - 1
+                                if 0 <= model_idx < len(models):
+                                    client.model = models[model_idx]
+                                    break
+                            except ValueError:
+                                pass
+                            
+                            # Try as model name
+                            if choice in models:
+                                client.model = choice
+                                break
+                            
+                            click.echo("Invalid selection. Please try again.")
+                        except KeyboardInterrupt:
+                            click.echo("\nCancelled.")
+                            sys.exit(0)
+        
+        # 5. Start chat UI
         run_chat(client, api_info)
         
     except KeyboardInterrupt:
