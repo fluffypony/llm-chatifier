@@ -364,11 +364,168 @@ class GenericClient(BaseClient):
         raise Exception("Unable to get response from generic API")
 
 
+class GeminiClient(BaseClient):
+    """Client for Google Gemini API."""
+    
+    def test_connection(self) -> None:
+        """Test connection by checking models endpoint."""
+        if not self.token:
+            raise Exception("API key is required for Gemini")
+        
+        url = f"{self.base_url}/v1beta/models?key={self.token}"
+        response = self.client.get(url)
+        
+        if response.status_code >= 400:
+            raise Exception(extract_error_message(response))
+    
+    def get_models(self) -> List[str]:
+        """Get available models from Gemini API."""
+        if not self.token:
+            return ["gemini-pro"]  # Fallback
+            
+        url = f"{self.base_url}/v1beta/models?key={self.token}"
+        response = self.client.get(url)
+        
+        if response.status_code >= 400:
+            logger.warning(f"Failed to get models: {extract_error_message(response)}")
+            return ["gemini-pro", "gemini-pro-vision"]  # Fallback models
+        
+        try:
+            data = response.json()
+            models = []
+            for model in data.get("models", []):
+                name = model.get("name", "")
+                if name.startswith("models/"):
+                    name = name[7:]  # Remove "models/" prefix
+                if "generateContent" in model.get("supportedGenerationMethods", []):
+                    models.append(name)
+            return sorted(models) if models else ["gemini-pro"]
+        except Exception as e:
+            logger.warning(f"Failed to parse models response: {e}")
+            return ["gemini-pro"]
+    
+    def send_message(self, text: str) -> str:
+        """Send message using Gemini generateContent format."""
+        if not self.token:
+            raise Exception("API key is required for Gemini")
+        
+        model_to_use = self.model or "gemini-pro"
+        
+        # Build conversation context in Gemini format
+        contents = []
+        for msg in self.history:
+            role = "user" if msg["role"] == "user" else "model" 
+            contents.append({
+                "role": role,
+                "parts": [{"text": msg["content"]}]
+            })
+        
+        # Add current message
+        contents.append({
+            "role": "user",
+            "parts": [{"text": text}]
+        })
+        
+        payload = {
+            "contents": contents
+        }
+        
+        url = f"{self.base_url}/v1beta/models/{model_to_use}:generateContent?key={self.token}"
+        response = self.client.post(url, json=payload)
+        
+        if response.status_code >= 400:
+            error_msg = extract_error_message(response)
+            raise Exception(f"Gemini API error: {error_msg}")
+        
+        try:
+            data = response.json()
+            reply = data["candidates"][0]["content"]["parts"][0]["text"]
+            
+            # Add to history
+            self.history.append({"role": "user", "content": text})
+            self.history.append({"role": "assistant", "content": reply})
+            
+            return reply
+        except (KeyError, IndexError, json.JSONDecodeError) as e:
+            raise Exception(f"Invalid Gemini response format: {e}")
+
+
+class CohereClient(BaseClient):
+    """Client for Cohere API."""
+    
+    def test_connection(self) -> None:
+        """Test connection by making a simple chat request."""
+        if not self.token:
+            raise Exception("API token is required for Cohere")
+        
+        # Test with minimal payload
+        url = f"{self.base_url}/v1/chat"
+        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        payload = {"message": "Hello", "model": "command"}
+        
+        response = self.client.post(url, headers=headers, json=payload)
+        
+        if response.status_code >= 400:
+            raise Exception(extract_error_message(response))
+    
+    def get_models(self) -> List[str]:
+        """Get available Cohere models (hardcoded list)."""
+        return [
+            "command",
+            "command-light", 
+            "command-nightly",
+            "command-r",
+            "command-r-plus"
+        ]
+    
+    def send_message(self, text: str) -> str:
+        """Send message using Cohere chat format."""
+        if not self.token:
+            raise Exception("API token is required for Cohere")
+        
+        model_to_use = self.model or "command"
+        
+        # Build conversation history for Cohere
+        chat_history = []
+        for msg in self.history:
+            role = "USER" if msg["role"] == "user" else "CHATBOT"
+            chat_history.append({
+                "role": role,
+                "message": msg["content"]
+            })
+        
+        payload = {
+            "message": text,
+            "model": model_to_use,
+            "chat_history": chat_history
+        }
+        
+        headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
+        url = f"{self.base_url}/v1/chat"
+        response = self.client.post(url, headers=headers, json=payload)
+        
+        if response.status_code >= 400:
+            error_msg = extract_error_message(response)
+            raise Exception(f"Cohere API error: {error_msg}")
+        
+        try:
+            data = response.json()
+            reply = data["text"]
+            
+            # Add to history
+            self.history.append({"role": "user", "content": text})
+            self.history.append({"role": "assistant", "content": reply})
+            
+            return reply
+        except (KeyError, json.JSONDecodeError) as e:
+            raise Exception(f"Invalid Cohere response format: {e}")
+
+
 def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None) -> BaseClient:
     """Factory function to create appropriate client.
     
     Args:
-        api_type: Type of API ('openai', 'ollama', 'anthropic', 'generic')
+        api_type: Type of API ('openai', 'ollama', 'anthropic', 'gemini', 'cohere', 'generic')
         base_url: Base URL for the API
         token: API token/key
         model: Model name to use
@@ -382,6 +539,10 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
             base_url = "https://api.openai.com"
         elif api_type == 'anthropic':
             base_url = "https://api.anthropic.com"
+        elif api_type == 'gemini':
+            base_url = "https://generativelanguage.googleapis.com"
+        elif api_type == 'cohere':
+            base_url = "https://api.cohere.ai"
         elif api_type == 'ollama':
             base_url = "http://localhost:11434"
         else:
@@ -393,6 +554,10 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
         return OllamaClient(base_url, token, model)
     elif api_type == 'anthropic':
         return AnthropicClient(base_url, token, model)
+    elif api_type == 'gemini':
+        return GeminiClient(base_url, token, model)
+    elif api_type == 'cohere':
+        return CohereClient(base_url, token, model)
     elif api_type == 'generic':
         return GenericClient(base_url, token, model)
     else:
