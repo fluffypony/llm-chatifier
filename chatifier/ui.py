@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.markdown import Markdown
-from prompt_toolkit import prompt
+from prompt_toolkit import prompt, PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.shortcuts import confirm
 from prompt_toolkit.styles import Style
@@ -66,7 +66,7 @@ def show_help():
 [bold]Tips:[/bold]
 • Just type your message and press Enter to chat
 • Use Ctrl+J for multi-line messages
-• In multi-line mode: Ctrl+Enter or Ctrl+D to submit
+• In multi-line mode: Alt+Enter or Ctrl+D to submit
 • The AI will remember the conversation context
 """
     console.print(Panel(help_text, title="Help", border_style="blue"))
@@ -101,31 +101,40 @@ def get_user_input(multiline_default: bool = False) -> str:
 
 def get_multiline_input() -> str:
     """Get multi-line input with proper exit keys."""
-    # Set up key bindings for exiting multiline mode
+    
+    # Set up key bindings for multiline input
     bindings = KeyBindings()
     
-    # Universal exit keys for all platforms
-    @bindings.add('c-m')  # Ctrl+Enter (Ctrl+M)
+    # Submit on Meta+Enter (Alt+Enter) - this is more reliable
+    @bindings.add('escape', 'enter')
     def _(event):
-        event.app.exit()
+        event.current_buffer.validate_and_handle()
     
-    # Try to add Ctrl+D as another exit option (more reliable than Shift+Enter)
-    @bindings.add('c-d')  # Ctrl+D
+    # Submit on Ctrl+D (EOF)
+    @bindings.add('c-d')
     def _(event):
-        event.app.exit()
+        event.current_buffer.validate_and_handle()
     
-    console.print("[dim]Multi-line mode - press Ctrl+Enter or Ctrl+D when done (or Ctrl+C):[/dim]")
+    # Handle Ctrl+C (exit with empty)
+    @bindings.add('c-c')
+    def _(event):
+        event.app.exit(exception=KeyboardInterrupt)
     
-    lines = []
+    console.print("[dim]Multi-line mode - press Alt+Enter or Ctrl+D when done:[/dim]")
+    
+    # Create a session for multiline input
+    session = PromptSession(
+        message="  ",
+        multiline=True,
+        key_bindings=bindings,
+        style=INPUT_STYLE
+    )
+    
     try:
-        while True:
-            line = prompt("  ", key_bindings=bindings, style=INPUT_STYLE)
-            lines.append(line)
+        text = session.prompt()
+        return text.strip() if text else ""
     except (KeyboardInterrupt, EOFError):
-        # Exit multiline mode
-        pass
-    
-    return '\n'.join(lines).strip()
+        return ""
 
 
 def display_response(response: str, render_markdown: bool = True):
