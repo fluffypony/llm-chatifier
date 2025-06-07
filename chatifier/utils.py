@@ -33,12 +33,15 @@ def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: 
     
     try:
         with httpx.Client(timeout=timeout, verify=False) as client:
-            # Try HEAD first (lighter), fall back to GET
+            # Try HEAD first (lighter), but immediately fall back to GET if 405 (Method Not Allowed)
             for method in ['HEAD', 'GET']:
                 try:
                     response = client.request(method, url, headers=headers)
                     # Consider 2xx, 401, 403 as "success" (API exists)
+                    # Also consider 405 on HEAD as success (means GET might work)
                     if response.status_code < 500:
+                        if response.status_code == 405 and method == 'HEAD':
+                            continue  # Try GET instead
                         logger.debug(f"{method} {url} -> {response.status_code}")
                         return True, response
                 except httpx.RequestError:

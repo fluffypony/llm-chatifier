@@ -38,7 +38,7 @@ def show_welcome(api_info: Dict[str, Any]):
     content += "• [yellow]/exit[/yellow] or [yellow]Ctrl+C[/yellow] - Quit\n"
     content += "• [yellow]/clear[/yellow] - Clear conversation history\n"
     content += "• [yellow]/help[/yellow] - Show this help\n"
-    content += "• [yellow]Ctrl+Enter[/yellow] - Multi-line input\n\n"
+    content += "• [yellow]Ctrl+J[/yellow] - Multi-line input\n\n"
     content += "[dim]💡 The AI remembers conversation context. Use /clear to start fresh.[/dim]"
     
     panel = Panel(content, title=title, border_style="green")
@@ -55,11 +55,11 @@ def show_help():
 • [yellow]/clear[/yellow] - Clear conversation history  
 • [yellow]/help[/yellow] - Show this help message
 • [yellow]Ctrl+C[/yellow] - Exit the chat
-• [yellow]Ctrl+Enter[/yellow] - Enter multi-line input mode
+• [yellow]Ctrl+J[/yellow] - Enter multi-line input mode
 
 [bold]Tips:[/bold]
 • Just type your message and press Enter to chat
-• Use Ctrl+Enter for multi-line messages
+• Use Ctrl+J for multi-line messages
 • The AI will remember the conversation context
 """
     console.print(Panel(help_text, title="Help", border_style="blue"))
@@ -71,7 +71,7 @@ def get_user_input() -> str:
         # Set up key bindings for multi-line input
         bindings = KeyBindings()
         
-        @bindings.add('c-enter')  # Ctrl+Enter
+        @bindings.add('c-j')  # Ctrl+J (common alternative for Ctrl+Enter)
         def _(event):
             event.app.exit(result='multiline')
         
