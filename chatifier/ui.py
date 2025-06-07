@@ -42,7 +42,7 @@ def show_welcome(api_info: Dict[str, Any], client=None):
     content += "\n"
     content += "Commands:\n"
     content += "• [yellow]/exit[/yellow] or [yellow]Ctrl+C[/yellow] - Quit\n"
-    content += "• [yellow]/clear[/yellow] - Clear conversation history\n"
+    content += "• [yellow]/clear[/yellow] - Clear conversation history (start fresh context)\n"
     content += "• [yellow]/help[/yellow] - Show this help\n"
     content += "• [yellow]Ctrl+J[/yellow] - Multi-line input\n\n"
     content += "[dim]💡 The AI remembers conversation context. Use /clear to start fresh.[/dim]"
@@ -58,7 +58,7 @@ def show_help():
 [bold]Available Commands:[/bold]
 
 • [yellow]/exit[/yellow] or [yellow]/quit[/yellow] - Exit the chat
-• [yellow]/clear[/yellow] - Clear conversation history  
+• [yellow]/clear[/yellow] - Clear conversation history (start fresh context)
 • [yellow]/help[/yellow] - Show this help message
 • [yellow]Ctrl+C[/yellow] - Exit the chat
 • [yellow]Ctrl+J[/yellow] - Enter multi-line input mode

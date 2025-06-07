@@ -19,14 +19,15 @@ logger = logging.getLogger(__name__)
 class BaseClient(ABC):
     """Base class for all API clients."""
     
-    def __init__(self, base_url: str, token: Optional[str] = None, model: Optional[str] = None):
+    def __init__(self, base_url: str, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False):
         if httpx is None:
             raise ImportError("httpx is required for API clients")
         self.base_url = base_url.rstrip('/')
         self.token = token
         self.model = model
+        self.verbose = verbose
         self.history: List[Dict[str, str]] = []
-        self.client = httpx.Client(timeout=30.0, verify=False)
+        self.client = httpx.Client(timeout=30.0, verify=False, follow_redirects=True)
     
     def __del__(self):
         """Clean up HTTP client."""
@@ -52,12 +53,82 @@ class BaseClient(ABC):
         """Clear conversation history."""
         self.history.clear()
     
+    def test_with_simple_prompt(self) -> str:
+        """Test API with a simple prompt to check if it works.
+        
+        This should be a lightweight test that checks if the API is accessible
+        and whether authentication is working.
+        
+        Returns:
+            Response from the API
+            
+        Raises:
+            Exception: If the API call fails (auth errors, network errors, etc.)
+        """
+        # Default implementation: try to get models list as a test
+        # Individual clients can override this for more appropriate tests
+        try:
+            models = self.get_models()
+            if models:
+                # Cache the models so we don't need to fetch again
+                self._cached_models = models
+                return f"API accessible. Found {len(models)} models."
+            else:
+                # Cache empty models list too
+                self._cached_models = []
+                return "API accessible but no models endpoint available."
+        except Exception as e:
+            # If getting models fails, that's our test result
+            raise e
+    
     def get_headers(self) -> Dict[str, str]:
         """Get common headers for requests."""
         headers = {"Content-Type": "application/json"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
+    
+    def _log_http_details(self, method: str, url: str, headers: Optional[Dict[str, str]] = None, 
+                         payload: Optional[Dict] = None, response = None):
+        """Log detailed HTTP request/response info in verbose mode."""
+        if not self.verbose:
+            return
+            
+        # Log request details
+        logger.info(f"=== HTTP {method} Request ===")
+        logger.info(f"URL: {url}")
+        
+        if headers:
+            logger.info("Request Headers:")
+            for key, value in headers.items():
+                # Redact sensitive headers
+                if key.lower() in ('authorization', 'x-api-key', 'anthropic-version'):
+                    value = f"{value[:10]}..." if len(value) > 10 else "***"
+                logger.info(f"  {key}: {value}")
+        
+        if payload:
+            import json
+            logger.info("Request Body:")
+            logger.info(f"  {json.dumps(payload, indent=2)}")
+        
+        # Log response details
+        if response:
+            logger.info(f"=== HTTP Response ===")
+            logger.info(f"Status: {response.status_code} {response.reason_phrase}")
+            logger.info("Response Headers:")
+            for key, value in response.headers.items():
+                logger.info(f"  {key}: {value}")
+            
+            # Log response body (truncated for safety)
+            try:
+                response_text = response.text
+                if len(response_text) > 1000:
+                    response_text = response_text[:1000] + "... (truncated)"
+                logger.info(f"Response Body:\n{response_text}")
+            except Exception:
+                logger.info("Response Body: <unable to decode>")
+        
+        logger.info("=" * 30)
 
 
 class OpenAIClient(BaseClient):
@@ -66,7 +137,11 @@ class OpenAIClient(BaseClient):
     def test_connection(self) -> None:
         """Test connection by checking models endpoint."""
         url = f"{self.base_url}/v1/models"
-        response = self.client.get(url, headers=self.get_headers())
+        headers = self.get_headers()
+        
+        self._log_http_details("GET", url, headers)
+        response = self.client.get(url, headers=headers)
+        self._log_http_details("GET", url, response=response)
         
         if is_auth_error(response):
             raise Exception("Authentication required or invalid token")
@@ -77,7 +152,11 @@ class OpenAIClient(BaseClient):
     def get_models(self) -> List[str]:
         """Get available models from OpenAI-compatible API."""
         url = f"{self.base_url}/v1/models"
-        response = self.client.get(url, headers=self.get_headers())
+        headers = self.get_headers()
+        
+        self._log_http_details("GET", url, headers)
+        response = self.client.get(url, headers=headers)
+        self._log_http_details("GET", url, response=response)
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
@@ -96,7 +175,7 @@ class OpenAIClient(BaseClient):
             return sorted(models)
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse models response: {e}")
-            logger.debug(f"Response content: {response.text[:200]}...")  # Log first 200 chars
+
             raise Exception("Models endpoint returned invalid JSON")
     
     def send_message(self, text: str) -> str:
@@ -131,6 +210,85 @@ class OpenAIClient(BaseClient):
             return reply
         except (KeyError, IndexError, json.JSONDecodeError) as e:
             raise Exception(f"Invalid response format: {e}")
+
+
+class OpenRouterClient(BaseClient):
+    """Client for OpenRouter API."""
+    
+    def test_connection(self) -> None:
+        """Test connection by checking models endpoint."""
+        url = f"{self.base_url}/api/v1/models"
+        headers = self.get_headers()
+        
+        self._log_http_details("GET", url, headers)
+        response = self.client.get(url, headers=headers)
+        self._log_http_details("GET", url, response=response)
+        
+        if response.status_code >= 400:
+            raise Exception(extract_error_message(response))
+        
+        # OpenRouter's models endpoint is public, but we need auth for actual usage
+        # If we don't have a token, warn that auth is required
+        if not self.token:
+            raise Exception("Authentication required or invalid token")
+    
+    def get_models(self) -> List[str]:
+        """Get available models from OpenRouter API."""
+        url = f"{self.base_url}/api/v1/models"
+        headers = self.get_headers()
+        
+        self._log_http_details("GET", url, headers)
+        response = self.client.get(url, headers=headers)
+        self._log_http_details("GET", url, response=response)
+        
+        if response.status_code >= 400:
+            logger.warning(f"Failed to get models: {extract_error_message(response)}")
+            raise Exception(f"Unable to fetch models list: {extract_error_message(response)}")
+        
+        try:
+            # Check if response is empty or not JSON
+            response_text = response.text.strip()
+            if not response_text:
+                logger.warning("Empty response from models endpoint")
+                raise Exception("No models found in API response")
+            
+            data = response.json()
+            models = [model["id"] for model in data.get("data", [])]
+            if not models:
+                logger.warning("No models found in API response")
+                raise Exception("No models found in API response")
+            return sorted(models)
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse models response: {e}")
+            raise Exception("Models endpoint returned invalid JSON")
+    
+    def send_message(self, text: str) -> str:
+        """Send message using OpenRouter chat completions format."""
+        self.history.append({"role": "user", "content": text})
+        
+        payload = {
+            "model": self.model,
+            "messages": self.history,
+            "stream": False
+        }
+        
+        url = f"{self.base_url}/api/v1/chat/completions"
+        headers = self.get_headers()
+        
+        self._log_http_details("POST", url, headers, payload)
+        response = self.client.post(url, headers=headers, json=payload)
+        self._log_http_details("POST", url, response=response)
+        
+        if response.status_code >= 400:
+            raise Exception(extract_error_message(response))
+        
+        try:
+            data = response.json()
+            reply = data["choices"][0]["message"]["content"]
+            self.history.append({"role": "assistant", "content": reply})
+            return reply
+        except (KeyError, json.JSONDecodeError) as e:
+            raise Exception(f"Invalid OpenRouter response format: {e}")
 
 
 class OllamaClient(BaseClient):
@@ -204,8 +362,41 @@ class OllamaClient(BaseClient):
 class AnthropicClient(BaseClient):
     """Client for Anthropic Claude API."""
     
+    def test_with_simple_prompt(self) -> str:
+        """Test Anthropic API with a real API call to check authentication."""
+        if not self.token:
+            raise Exception("Authentication required - x-api-key header is required")
+        
+        # Make a minimal test call to verify authentication works
+        payload = {
+            "model": "claude-3-sonnet-20240229",
+            "max_tokens": 5,
+            "messages": [{"role": "user", "content": "Hi"}]
+        }
+        
+        url = f"{self.base_url}/v1/messages"
+        headers = self.get_headers()
+        
+        self._log_http_details("POST", url, headers, payload)
+        response = self.client.post(url, headers=headers, json=payload)
+        self._log_http_details("POST", url, response=response)
+        
+        if response.status_code >= 400:
+            error_msg = extract_error_message(response)
+            if 'auth' in error_msg.lower() or 'api key' in error_msg.lower():
+                raise Exception("Authentication required - invalid or missing x-api-key")
+            else:
+                raise Exception(f"API test failed: {error_msg}")
+        
+        try:
+            data = response.json()
+            reply = data["content"][0]["text"]
+            return f"API test successful: {reply}"
+        except (KeyError, json.JSONDecodeError) as e:
+            return "API test successful: Authentication verified"
+    
     def get_headers(self) -> Dict[str, str]:
-        """Get Anthropic-specific headers."""
+        """Get headers for Anthropic API requests."""
         headers = {
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01"
@@ -215,33 +406,17 @@ class AnthropicClient(BaseClient):
         return headers
     
     def test_connection(self) -> None:
-        """Test connection by making a simple request."""
-        # Anthropic doesn't have a models endpoint, so we'll just try a minimal message
-        payload = {
-            "model": "claude-3-sonnet-20240229",
-            "max_tokens": 1,
-            "messages": [{"role": "user", "content": "Hi"}]
-        }
-        
-        url = f"{self.base_url}/v1/messages"
-        response = self.client.post(url, headers=self.get_headers(), json=payload)
-        
-        if is_auth_error(response):
-            raise Exception("Authentication required or invalid API key")
-        
-        if response.status_code >= 400:
-            raise Exception(extract_error_message(response))
+        """Test connection by checking authentication."""
+        # For Anthropic, we just check if we have the required x-api-key
+        # The actual connection will be tested when sending the first message
+        if not self.token:
+            raise Exception("Authentication required - x-api-key header is required")
     
     def get_models(self) -> List[str]:
-        """Get available Anthropic models (hardcoded list)."""
-        return [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229", 
-            "claude-3-haiku-20240307",
-            "claude-2.1",
-            "claude-2.0",
-            "claude-instant-1.2"
-        ]
+        """Anthropic doesn't have a public models endpoint."""
+        # Anthropic doesn't provide a models list endpoint
+        # Users must specify a model manually
+        return []
     
     def send_message(self, text: str) -> str:
         """Send message using Anthropic messages format."""
@@ -286,8 +461,8 @@ class AnthropicClient(BaseClient):
 class GenericClient(BaseClient):
     """Generic client that tries common chat API patterns."""
     
-    def __init__(self, base_url: str, token: Optional[str] = None):
-        super().__init__(base_url, token)
+    def __init__(self, base_url: str, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False):
+        super().__init__(base_url, token, model, verbose)
         self.chat_endpoint = None
         self._discover_endpoints()
     
@@ -481,14 +656,39 @@ class CohereClient(BaseClient):
             raise Exception(extract_error_message(response))
     
     def get_models(self) -> List[str]:
-        """Get available Cohere models (hardcoded list)."""
-        return [
-            "command",
-            "command-light", 
-            "command-nightly",
-            "command-r",
-            "command-r-plus"
-        ]
+        """Try to get models from Cohere API."""
+        # Cohere might have a models endpoint, let's try it
+        if not self.token:
+            raise Exception("Authentication required for Cohere")
+        
+        url = f"{self.base_url}/v1/models"
+        headers = self.get_headers()
+        
+        self._log_http_details("GET", url, headers)
+        response = self.client.get(url, headers=headers)
+        self._log_http_details("GET", url, response=response)
+        
+        if response.status_code >= 400:
+            # If models endpoint doesn't exist, return empty list
+            if response.status_code == 404:
+                return []
+            else:
+                error_msg = extract_error_message(response)
+                raise Exception(f"Failed to get models: {error_msg}")
+        
+        try:
+            data = response.json()
+            # Try different possible response formats
+            if isinstance(data, list):
+                return [model.get("name", model.get("id", str(model))) for model in data]
+            elif "models" in data:
+                return [model.get("name", model.get("id", str(model))) for model in data["models"]]
+            elif "data" in data:
+                return [model.get("name", model.get("id", str(model))) for model in data["data"]]
+            else:
+                return []
+        except json.JSONDecodeError:
+            return []
     
     def send_message(self, text: str) -> str:
         """Send message using Cohere chat format."""
@@ -533,11 +733,11 @@ class CohereClient(BaseClient):
             raise Exception(f"Invalid Cohere response format: {e}")
 
 
-def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None) -> BaseClient:
+def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False) -> BaseClient:
     """Factory function to create appropriate client.
     
     Args:
-        api_type: Type of API ('openai', 'ollama', 'anthropic', 'gemini', 'cohere', 'generic')
+        api_type: Type of API ('openai', 'openrouter', 'ollama', 'anthropic', 'gemini', 'cohere', 'generic')
         base_url: Base URL for the API
         token: API token/key
         model: Model name to use
@@ -549,6 +749,8 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
         # Construct base URL based on API type and defaults
         if api_type == 'openai':
             base_url = "https://api.openai.com"
+        elif api_type == 'openrouter':
+            base_url = "https://openrouter.ai"
         elif api_type == 'anthropic':
             base_url = "https://api.anthropic.com"
         elif api_type == 'gemini':
@@ -561,16 +763,18 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
             base_url = "http://localhost:8080"
     
     if api_type == 'openai':
-        return OpenAIClient(base_url, token, model)
+        return OpenAIClient(base_url, token, model, verbose)
+    elif api_type == 'openrouter':
+        return OpenRouterClient(base_url, token, model, verbose)
     elif api_type == 'ollama':
-        return OllamaClient(base_url, token, model)
+        return OllamaClient(base_url, token, model, verbose)
     elif api_type == 'anthropic':
-        return AnthropicClient(base_url, token, model)
+        return AnthropicClient(base_url, token, model, verbose)
     elif api_type == 'gemini':
-        return GeminiClient(base_url, token, model)
+        return GeminiClient(base_url, token, model, verbose)
     elif api_type == 'cohere':
-        return CohereClient(base_url, token, model)
+        return CohereClient(base_url, token, model, verbose)
     elif api_type == 'generic':
-        return GenericClient(base_url, token, model)
+        return GenericClient(base_url, token, model, verbose)
     else:
         raise ValueError(f"Unknown API type: {api_type}")

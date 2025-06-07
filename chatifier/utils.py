@@ -32,7 +32,7 @@ def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: 
         raise ImportError("httpx is required for try_connection")
     
     try:
-        with httpx.Client(timeout=timeout, verify=False) as client:
+        with httpx.Client(timeout=timeout, verify=False, follow_redirects=True) as client:
             # Try HEAD first (lighter), but immediately fall back to GET if 405 (Method Not Allowed)
             for method in ['HEAD', 'GET']:
                 try:

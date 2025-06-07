@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Common API endpoints for detection
 API_ENDPOINTS = {
     'openai': ['/v1/models', '/v1/chat/completions'],
+    'openrouter': ['/api/v1/models', '/api/v1/chat/completions'],
     'anthropic': ['/v1/messages', '/v1/models'],
     'ollama': ['/api/tags', '/api/generate'],
     'gemini': ['/v1beta/models', '/v1beta/models/gemini-pro:generateContent'],
@@ -25,6 +26,9 @@ API_ENDPOINTS = {
 
 # Common ports to try if none specified
 DEFAULT_PORTS = [8080, 8000, 3000, 5000, 11434, 80, 443]
+
+# Ports for domain names (standard web ports first)
+DOMAIN_PORTS = [443, 80, 8080, 8000, 3000, 5000]
 
 
 def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False, token: Optional[str] = None) -> Optional[Dict[str, str]]:
@@ -39,7 +43,27 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
     Returns:
         Dict with 'type', 'host', 'port', 'base_url' if detected, None otherwise
     """
-    ports_to_try = [port] if port else DEFAULT_PORTS
+    # Domain-specific API type hints
+    domain_hints = {
+        'openrouter.ai': 'openrouter',
+        'api.anthropic.com': 'anthropic', 
+        'api.openai.com': 'openai',
+        'generativelanguage.googleapis.com': 'gemini',
+        'api.cohere.ai': 'cohere'
+    }
+    
+    # If we have a domain hint, try that API type first
+    priority_apis = []
+    if host.lower() in domain_hints:
+        priority_apis = [domain_hints[host.lower()]]
+    if port:
+        ports_to_try = [port]
+    else:
+        # Use standard web ports for domain names, otherwise use default ports
+        if '.' in host and not host.replace('.', '').replace('-', '').isdigit():
+            ports_to_try = DOMAIN_PORTS
+        else:
+            ports_to_try = DEFAULT_PORTS
     
     for test_port in ports_to_try:
         logger.debug(f"Trying port {test_port}")
@@ -50,8 +74,10 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
             base_url = build_base_url(host, test_port, use_https)
             logger.debug(f"Testing {base_url}")
             
-            # Test each API type
-            for api_type, endpoints in API_ENDPOINTS.items():
+            # Test each API type (priority APIs first, then others)
+            apis_to_test = priority_apis + [api for api in API_ENDPOINTS.keys() if api not in priority_apis]
+            for api_type in apis_to_test:
+                endpoints = API_ENDPOINTS[api_type]
                 for endpoint in endpoints:
                     url = f"{base_url}{endpoint}"
                     
@@ -65,7 +91,7 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
                             }
                         elif api_type == 'gemini':
                             url = f"{url}?key={token}"  # Gemini uses query param
-                        elif api_type in ['openai', 'cohere']:
+                        elif api_type in ['openai', 'openrouter', 'cohere']:
                             headers = {"Authorization": f"Bearer {token}"}
                     
                     success, response = try_connection(url, headers)
@@ -76,7 +102,8 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
                             'type': api_type,
                             'host': host,
                             'port': test_port,
-                            'base_url': base_url
+                            'base_url': base_url,
+                            'use_https': use_https
                         }
                     
                     logger.debug(f"Failed to connect to {url}")
