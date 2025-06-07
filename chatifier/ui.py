@@ -10,11 +10,21 @@ from rich.markdown import Markdown
 from prompt_toolkit import prompt
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.shortcuts import confirm
+from prompt_toolkit.styles import Style
 
 from .clients import BaseClient
 
 
 console = Console()
+
+# Define styles for different color modes
+INPUT_STYLE = Style.from_dict({
+    'user-input': '#808080',  # Light grey that works on both dark and light backgrounds
+    'user-prompt': '#666666', # Slightly darker grey for the prompt
+})
+
+# Color for user text in panels (works on both light and dark)
+USER_COLOR = "bright_black"  # This adapts to terminal theme
 
 
 def show_welcome(api_info: Dict[str, Any]):
@@ -28,7 +38,8 @@ def show_welcome(api_info: Dict[str, Any]):
     content += "• [yellow]/exit[/yellow] or [yellow]Ctrl+C[/yellow] - Quit\n"
     content += "• [yellow]/clear[/yellow] - Clear conversation history\n"
     content += "• [yellow]/help[/yellow] - Show this help\n"
-    content += "• [yellow]Ctrl+Enter[/yellow] - Multi-line input"
+    content += "• [yellow]Ctrl+Enter[/yellow] - Multi-line input\n\n"
+    content += "[dim]💡 The AI remembers conversation context. Use /clear to start fresh.[/dim]"
     
     panel = Panel(content, title=title, border_style="green")
     console.print(panel)
@@ -64,8 +75,8 @@ def get_user_input() -> str:
         def _(event):
             event.app.exit(result='multiline')
         
-        # Get initial input
-        text = prompt("You: ", key_bindings=bindings)
+        # Get initial input with light grey color
+        text = prompt("You: ", key_bindings=bindings, style=INPUT_STYLE)
         
         # Check if user wants multi-line input
         if text == 'multiline':
@@ -73,7 +84,7 @@ def get_user_input() -> str:
             lines = []
             try:
                 while True:
-                    line = prompt("... ")
+                    line = prompt("... ", style=INPUT_STYLE)
                     lines.append(line)
             except KeyboardInterrupt:
                 text = '\n'.join(lines)
@@ -82,6 +93,13 @@ def get_user_input() -> str:
     
     except (KeyboardInterrupt, EOFError):
         return '/exit'
+
+
+def display_user_message(message: str):
+    """Display user message with subtle styling."""
+    # Use bright_black which adapts to light/dark themes
+    styled_message = f"[{USER_COLOR}]{message}[/{USER_COLOR}]"
+    console.print(Panel(styled_message, title="👤 You", border_style="bright_black"))
 
 
 def display_response(response: str):
@@ -141,6 +159,9 @@ def run_chat(client: BaseClient, api_info: Dict[str, Any]):
             elif user_input.lower() == '/help':
                 show_help()
                 continue
+            
+            # Display user message
+            display_user_message(user_input)
             
             # Send message to API
             try:
