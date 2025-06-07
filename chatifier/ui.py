@@ -75,8 +75,8 @@ def get_user_input() -> str:
         def _(event):
             event.app.exit(result='multiline')
         
-        # Get initial input with light grey color
-        text = prompt("You: ", key_bindings=bindings, style=INPUT_STYLE)
+        # Get initial input with simple cursor and light grey color
+        text = prompt("> ", key_bindings=bindings, style=INPUT_STYLE)
         
         # Check if user wants multi-line input
         if text == 'multiline':
@@ -84,7 +84,7 @@ def get_user_input() -> str:
             lines = []
             try:
                 while True:
-                    line = prompt("... ", style=INPUT_STYLE)
+                    line = prompt("  ", style=INPUT_STYLE)
                     lines.append(line)
             except KeyboardInterrupt:
                 text = '\n'.join(lines)
@@ -95,26 +95,21 @@ def get_user_input() -> str:
         return '/exit'
 
 
-def display_user_message(message: str):
-    """Display user message with subtle styling."""
-    # Use bright_black which adapts to light/dark themes
-    styled_message = f"[{USER_COLOR}]{message}[/{USER_COLOR}]"
-    console.print(Panel(styled_message, title="👤 You", border_style="bright_black"))
-
-
-def display_response(response: str):
-    """Display AI response with nice formatting."""
+def display_response(response: str, render_markdown: bool = True):
+    """Display AI response with optional markdown rendering."""
     try:
-        # Try to render as markdown if it contains formatting
-        if any(marker in response for marker in ['**', '*', '`', '#', '-', '1.']):
+        if render_markdown and any(marker in response for marker in ['**', '*', '`', '#', '-', '1.', '```']):
+            # Render as markdown
             md = Markdown(response)
-            console.print(Panel(md, title="🤖 Assistant", border_style="blue"))
+            console.print(md)
         else:
             # Plain text response
-            console.print(Panel(response, title="🤖 Assistant", border_style="blue"))
+            console.print(response)
     except Exception:
         # Fallback to plain text
-        console.print(Panel(response, title="🤖 Assistant", border_style="blue"))
+        console.print(response)
+    
+    console.print()  # Add spacing after response
 
 
 def display_error(error_msg: str):
@@ -128,12 +123,13 @@ def display_thinking():
         pass
 
 
-def run_chat(client: BaseClient, api_info: Dict[str, Any]):
+def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool = True):
     """Main chat loop.
     
     Args:
         client: API client instance
         api_info: Information about the detected API
+        render_markdown: Whether to render markdown in responses
     """
     # Show welcome message
     show_welcome(api_info)
@@ -160,17 +156,13 @@ def run_chat(client: BaseClient, api_info: Dict[str, Any]):
                 show_help()
                 continue
             
-            # Display user message
-            display_user_message(user_input)
-            
             # Send message to API
             try:
                 with console.status("[bold green]Thinking...", spinner="dots"):
                     response = client.send_message(user_input)
                 
                 # Display response
-                display_response(response)
-                console.print()  # Add spacing
+                display_response(response, render_markdown)
                 
             except Exception as e:
                 display_error(str(e))
