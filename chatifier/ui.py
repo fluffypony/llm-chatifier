@@ -66,7 +66,7 @@ def show_help():
 [bold]Tips:[/bold]
 • Just type your message and press Enter to chat
 • Use Ctrl+J for multi-line messages
-• In multi-line mode: Alt+Enter or Ctrl+D to submit
+• In multi-line mode: Ctrl+D or Ctrl+X to submit
 • The AI will remember the conversation context
 """
     console.print(Panel(help_text, title="Help", border_style="blue"))
@@ -105,13 +105,13 @@ def get_multiline_input() -> str:
     # Set up key bindings for multiline input
     bindings = KeyBindings()
     
-    # Submit on Meta+Enter (Alt+Enter) - this is more reliable
-    @bindings.add('escape', 'enter')
+    # Submit on Ctrl+D (EOF) - works on all platforms
+    @bindings.add('c-d')
     def _(event):
         event.current_buffer.validate_and_handle()
     
-    # Submit on Ctrl+D (EOF)
-    @bindings.add('c-d')
+    # Submit on Ctrl+X - alternative that works on Mac
+    @bindings.add('c-x')
     def _(event):
         event.current_buffer.validate_and_handle()
     
@@ -120,7 +120,7 @@ def get_multiline_input() -> str:
     def _(event):
         event.app.exit(exception=KeyboardInterrupt)
     
-    console.print("[dim]Multi-line mode - press Alt+Enter or Ctrl+D when done:[/dim]")
+    console.print("[dim]Multi-line mode - press Ctrl+D or Ctrl+X when done:[/dim]")
     
     # Create a session for multiline input
     session = PromptSession(
