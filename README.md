@@ -36,6 +36,9 @@ llm-chatifier 192.168.1.100 --port 8080 --token sk-...
 # Force specific API type
 llm-chatifier --override openai
 
+# Use specific model
+llm-chatifier --model gpt-4
+
 # Verbose output to see detection process
 llm-chatifier -v
 ```
@@ -43,8 +46,10 @@ llm-chatifier -v
 ## Supported APIs
 
 - **OpenAI compatible**: OpenAI, llama.cpp, vLLM, LocalAI, etc.
-- **Ollama**: Local Ollama installations
+- **Ollama**: Local Ollama installations  
 - **Anthropic**: Claude API
+- **Google Gemini**: Gemini Pro and Vision models
+- **Cohere**: Command and Command-R models
 - **Generic**: Any chat API with common REST patterns
 
 ## Commands
@@ -71,6 +76,8 @@ The tool automatically detects API types by testing these endpoints:
 - **OpenAI**: `/v1/models`, `/v1/chat/completions`
 - **Anthropic**: `/v1/messages`, `/v1/models`  
 - **Ollama**: `/api/tags`, `/api/generate`
+- **Gemini**: `/v1beta/models`, `/v1beta/models/gemini-pro:generateContent`
+- **Cohere**: `/v1/chat`
 - **Generic**: `/chat`, `/api/chat`, `/message`, `/api/message`
 
 ## Examples
@@ -87,6 +94,12 @@ llm-chatifier --override ollama
 
 # Connect to Anthropic API
 llm-chatifier --override anthropic --token your-claude-key
+
+# Connect to Google Gemini
+llm-chatifier --override gemini --token your-gemini-key
+
+# Connect to Cohere
+llm-chatifier --override cohere --token your-cohere-key
 ```
 
 ## Development
