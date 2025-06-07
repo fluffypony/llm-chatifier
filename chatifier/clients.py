@@ -81,21 +81,23 @@ class OpenAIClient(BaseClient):
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
-            return ["gpt-3.5-turbo", "gpt-4"]  # Fallback models
+            raise Exception(f"Unable to fetch models list: {extract_error_message(response)}")
         
         try:
             # Check if response is empty or not JSON
             if not response.text.strip():
                 logger.warning("Empty response from models endpoint")
-                return ["gpt-3.5-turbo", "gpt-4"]
+                raise Exception("Models endpoint returned empty response")
             
             data = response.json()
             models = [model["id"] for model in data.get("data", [])]
-            return sorted(models) if models else ["gpt-3.5-turbo", "gpt-4"]
-        except Exception as e:
+            if not models:
+                raise Exception("No models found in API response")
+            return sorted(models)
+        except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse models response: {e}")
             logger.debug(f"Response content: {response.text[:200]}...")  # Log first 200 chars
-            return ["gpt-3.5-turbo", "gpt-4"]
+            raise Exception("Models endpoint returned invalid JSON")
     
     def send_message(self, text: str) -> str:
         """Send message using OpenAI chat completions format."""
@@ -149,15 +151,17 @@ class OllamaClient(BaseClient):
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
-            return ["llama2"]  # Fallback model
+            raise Exception(f"Unable to fetch models from Ollama: {extract_error_message(response)}")
         
         try:
             data = response.json()
             models = [model["name"] for model in data.get("models", [])]
-            return sorted(models) if models else ["llama2"]
-        except Exception as e:
+            if not models:
+                raise Exception("No models found in Ollama. Please install a model first with 'ollama pull <model-name>'")
+            return sorted(models)
+        except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse models response: {e}")
-            return ["llama2"]
+            raise Exception("Ollama returned invalid response format")
     
     def send_message(self, text: str) -> str:
         """Send message using Ollama generate format."""
@@ -387,14 +391,14 @@ class GeminiClient(BaseClient):
     def get_models(self) -> List[str]:
         """Get available models from Gemini API."""
         if not self.token:
-            return ["gemini-pro"]  # Fallback
+            raise Exception("API key is required to fetch Gemini models")
             
         url = f"{self.base_url}/v1beta/models?key={self.token}"
         response = self.client.get(url)
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
-            return ["gemini-pro", "gemini-pro-vision"]  # Fallback models
+            raise Exception(f"Unable to fetch Gemini models: {extract_error_message(response)}")
         
         try:
             data = response.json()
@@ -405,10 +409,12 @@ class GeminiClient(BaseClient):
                     name = name[7:]  # Remove "models/" prefix
                 if "generateContent" in model.get("supportedGenerationMethods", []):
                     models.append(name)
-            return sorted(models) if models else ["gemini-pro"]
-        except Exception as e:
+            if not models:
+                raise Exception("No compatible Gemini models found")
+            return sorted(models)
+        except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse models response: {e}")
-            return ["gemini-pro"]
+            raise Exception("Gemini returned invalid response format")
     
     def send_message(self, text: str) -> str:
         """Send message using Gemini generateContent format."""

@@ -94,8 +94,8 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
         
         # 4. Handle model selection if no model specified
         if not client.model:
-            models = client.get_models()
-            if models:
+            try:
+                models = client.get_models()
                 if len(models) == 1:
                     client.model = models[0]
                     if verbose:
@@ -130,6 +130,10 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                         except KeyboardInterrupt:
                             click.echo("\nCancelled.")
                             sys.exit(0)
+            except Exception as e:
+                click.echo(f"Error: {e}")
+                click.echo("Unable to retrieve models list. Please specify a model with --model flag.")
+                sys.exit(1)
         
         # 5. Start chat UI
         render_markdown = not no_markdown
