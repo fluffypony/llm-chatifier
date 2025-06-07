@@ -134,6 +134,41 @@ class BaseClient(ABC):
 class OpenAIClient(BaseClient):
     """Client for OpenAI-compatible APIs (OpenAI, llama.cpp, vLLM, etc.)."""
     
+    def test_with_simple_prompt(self) -> str:
+        """Test OpenAI API with a real API call if model is specified."""
+        # If user specified a model, test it directly
+        if self.model:
+            try:
+                # Test the specific model with a minimal request
+                payload = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "max_tokens": 5
+                }
+                
+                url = f"{self.base_url}/v1/chat/completions"
+                headers = self.get_headers()
+                
+                self._log_http_details("POST", url, headers, payload)
+                response = self.client.post(url, headers=headers, json=payload)
+                self._log_http_details("POST", url, response=response)
+                
+                if response.status_code >= 400:
+                    error_msg = extract_error_message(response)
+                    if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
+                        raise Exception("Authentication required or invalid token")
+                    elif 'model' in error_msg.lower():
+                        raise Exception(f"Invalid model '{self.model}' - {error_msg}")
+                    else:
+                        raise Exception(f"API test failed: {error_msg}")
+                
+                return f"API test successful with model {self.model}"
+            except Exception as e:
+                raise e
+        else:
+            # Fall back to default behavior (get models)
+            return super().test_with_simple_prompt()
+    
     def test_connection(self) -> None:
         """Test connection by checking models endpoint."""
         url = f"{self.base_url}/v1/models"
@@ -214,6 +249,41 @@ class OpenAIClient(BaseClient):
 
 class OpenRouterClient(BaseClient):
     """Client for OpenRouter API."""
+    
+    def test_with_simple_prompt(self) -> str:
+        """Test OpenRouter API with a real API call if model is specified."""
+        # If user specified a model, test it directly
+        if self.model:
+            try:
+                # Test the specific model with a minimal request
+                payload = {
+                    "model": self.model,
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "max_tokens": 5
+                }
+                
+                url = f"{self.base_url}/api/v1/chat/completions"
+                headers = self.get_headers()
+                
+                self._log_http_details("POST", url, headers, payload)
+                response = self.client.post(url, headers=headers, json=payload)
+                self._log_http_details("POST", url, response=response)
+                
+                if response.status_code >= 400:
+                    error_msg = extract_error_message(response)
+                    if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
+                        raise Exception("Authentication required or invalid token")
+                    elif 'model' in error_msg.lower():
+                        raise Exception(f"Invalid model '{self.model}' - {error_msg}")
+                    else:
+                        raise Exception(f"API test failed: {error_msg}")
+                
+                return f"API test successful with model {self.model}"
+            except Exception as e:
+                raise e
+        else:
+            # Fall back to default behavior (get models)
+            return super().test_with_simple_prompt()
     
     def test_connection(self) -> None:
         """Test connection by checking models endpoint."""
@@ -370,9 +440,12 @@ class AnthropicClient(BaseClient):
         if not self.token:
             raise Exception("Authentication required - x-api-key header is required")
         
-        # Make a minimal test call to verify authentication works
+        # Use user-specified model or fallback to a known working model
+        test_model = self.model or "claude-3-sonnet-20240229"
+        
+        # Make a minimal test call to verify authentication and model work
         payload = {
-            "model": "claude-3-sonnet-20240229",
+            "model": test_model,
             "max_tokens": 5,
             "messages": [{"role": "user", "content": "Hi"}]
         }
@@ -388,6 +461,8 @@ class AnthropicClient(BaseClient):
             error_msg = extract_error_message(response)
             if 'auth' in error_msg.lower() or 'api key' in error_msg.lower():
                 raise Exception("Authentication required - invalid or missing x-api-key")
+            elif 'model' in error_msg.lower() and self.model:
+                raise Exception(f"Invalid model '{self.model}' - {error_msg}")
             else:
                 raise Exception(f"API test failed: {error_msg}")
         

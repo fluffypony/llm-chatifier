@@ -181,6 +181,22 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                     sys.exit(1)
             else:
                 click.echo(f"API test failed: {e}")
+                # If it's a model error and we have a user-specified model, try to help
+                if 'invalid model' in str(e).lower() and model:
+                    try:
+                        if verbose:
+                            click.echo("Attempting to fetch available models...")
+                        models = client.get_models()
+                        if models:
+                            click.echo(f"Available models:")
+                            for i, model_name in enumerate(models[:10], 1):
+                                click.echo(f"  {i}. {model_name}")
+                            if len(models) > 10:
+                                click.echo(f"  ... and {len(models) - 10} more")
+                        else:
+                            click.echo("No models list available. Please check the API documentation.")
+                    except:
+                        pass
                 sys.exit(1)
         
         # 5. Handle model selection if no model specified
