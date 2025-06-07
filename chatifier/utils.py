@@ -180,4 +180,8 @@ def parse_host_input(host_input: str) -> Tuple[str, Optional[int], bool]:
             pass
     
     # Otherwise, treat as hostname/IP with no port specified
-    return host_input, None, False  # Default to HTTP
+    # For domain names like "api.anthropic.com", default to HTTPS
+    if '.' in host_input and not host_input.replace('.', '').replace('-', '').isdigit():
+        return host_input, None, True  # Default to HTTPS for domain names
+    else:
+        return host_input, None, False  # Default to HTTP for IPs

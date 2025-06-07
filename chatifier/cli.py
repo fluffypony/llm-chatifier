@@ -53,7 +53,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
         else:
             if verbose:
                 click.echo(f"Auto-detecting API on {parsed_host}...")
-            api_info = detect_api(parsed_host, final_port, use_https)
+            api_info = detect_api(parsed_host, final_port, use_https, token)
             if not api_info:
                 click.echo(f"Error: No compatible API found on {parsed_host}")
                 if final_port:

@@ -84,11 +84,17 @@ class OpenAIClient(BaseClient):
             return ["gpt-3.5-turbo", "gpt-4"]  # Fallback models
         
         try:
+            # Check if response is empty or not JSON
+            if not response.text.strip():
+                logger.warning("Empty response from models endpoint")
+                return ["gpt-3.5-turbo", "gpt-4"]
+            
             data = response.json()
             models = [model["id"] for model in data.get("data", [])]
             return sorted(models) if models else ["gpt-3.5-turbo", "gpt-4"]
         except Exception as e:
             logger.warning(f"Failed to parse models response: {e}")
+            logger.debug(f"Response content: {response.text[:200]}...")  # Log first 200 chars
             return ["gpt-3.5-turbo", "gpt-4"]
     
     def send_message(self, text: str) -> str:

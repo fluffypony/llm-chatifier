@@ -27,13 +27,14 @@ API_ENDPOINTS = {
 DEFAULT_PORTS = [8080, 8000, 3000, 5000, 11434, 80, 443]
 
 
-def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False) -> Optional[Dict[str, str]]:
+def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False, token: Optional[str] = None) -> Optional[Dict[str, str]]:
     """Detect API type by testing common endpoints.
     
     Args:
         host: Hostname or IP address
         port: Port number (if None, tries common ports)
         prefer_https: Whether to prefer HTTPS (if URL was provided with https://)
+        token: Optional API token for authentication during detection
     
     Returns:
         Dict with 'type', 'host', 'port', 'base_url' if detected, None otherwise
@@ -53,7 +54,21 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
             for api_type, endpoints in API_ENDPOINTS.items():
                 for endpoint in endpoints:
                     url = f"{base_url}{endpoint}"
-                    success, response = try_connection(url)
+                    
+                    # Prepare headers based on API type and token
+                    headers = None
+                    if token:
+                        if api_type == 'anthropic':
+                            headers = {
+                                "x-api-key": token,
+                                "anthropic-version": "2023-06-01"
+                            }
+                        elif api_type == 'gemini':
+                            url = f"{url}?key={token}"  # Gemini uses query param
+                        elif api_type in ['openai', 'cohere']:
+                            headers = {"Authorization": f"Bearer {token}"}
+                    
+                    success, response = try_connection(url, headers)
                     
                     if success:
                         logger.debug(f"Found {api_type} API at {base_url}")
