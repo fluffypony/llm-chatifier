@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+dist/
+*.egg-info/
+.pypirc
+venv/
+.coverage
+.pytest_cache/
