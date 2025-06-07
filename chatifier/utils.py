@@ -2,6 +2,7 @@
 
 import getpass
 import logging
+from urllib.parse import urlparse
 from typing import Dict, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -147,3 +148,33 @@ def format_model_name(model: str) -> str:
             formatted = formatted[:-len(suffix)]
     
     return formatted
+
+
+def parse_host_input(host_input: str) -> Tuple[str, Optional[int], bool]:
+    """Parse user input that could be IP, hostname, or full URL.
+    
+    Args:
+        host_input: User input (IP, hostname, or URL)
+    
+    Returns:
+        Tuple of (hostname, port, use_https)
+    """
+    # If it looks like a URL, parse it
+    if '://' in host_input:
+        parsed = urlparse(host_input)
+        hostname = parsed.hostname or parsed.netloc
+        port = parsed.port
+        use_https = parsed.scheme == 'https'
+        return hostname, port, use_https
+    
+    # If it contains a port, split it
+    if ':' in host_input and not host_input.count(':') > 1:  # Not IPv6
+        try:
+            hostname, port_str = host_input.rsplit(':', 1)
+            port = int(port_str)
+            return hostname, port, False  # Default to HTTP for IP:port format
+        except ValueError:
+            pass
+    
+    # Otherwise, treat as hostname/IP with no port specified
+    return host_input, None, False  # Default to HTTP

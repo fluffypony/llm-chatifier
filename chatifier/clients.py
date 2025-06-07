@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 class BaseClient(ABC):
     """Base class for all API clients."""
     
-    def __init__(self, base_url: str, token: Optional[str] = None):
+    def __init__(self, base_url: str, token: Optional[str] = None, model: Optional[str] = None):
         if httpx is None:
             raise ImportError("httpx is required for API clients")
         self.base_url = base_url.rstrip('/')
         self.token = token
+        self.model = model
         self.history: List[Dict[str, str]] = []
         self.client = httpx.Client(timeout=30.0, verify=False)
     
@@ -74,8 +75,9 @@ class OpenAIClient(BaseClient):
         self.history.append({"role": "user", "content": text})
         
         # Prepare request
+        model_to_use = self.model or "gpt-3.5-turbo"  # Use specified model or default
         payload = {
-            "model": "gpt-3.5-turbo",  # Default model, will work with most compatible APIs
+            "model": model_to_use,
             "messages": self.history,
             "stream": False
         }
@@ -124,8 +126,9 @@ class OllamaClient(BaseClient):
         
         prompt = context + f"User: {text}\nAssistant: "
         
+        model_to_use = self.model or "llama2"  # Use specified model or default
         payload = {
-            "model": "llama2",  # Default model
+            "model": model_to_use,
             "prompt": prompt,
             "stream": False
         }
@@ -191,8 +194,9 @@ class AnthropicClient(BaseClient):
         # Add current message
         messages.append({"role": "user", "content": text})
         
+        model_to_use = self.model or "claude-3-sonnet-20240229"  # Use specified model or default
         payload = {
-            "model": "claude-3-sonnet-20240229",
+            "model": model_to_use,
             "max_tokens": 4000,
             "messages": messages
         }
@@ -306,13 +310,14 @@ class GenericClient(BaseClient):
         raise Exception("Unable to get response from generic API")
 
 
-def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None) -> BaseClient:
+def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None) -> BaseClient:
     """Factory function to create appropriate client.
     
     Args:
         api_type: Type of API ('openai', 'ollama', 'anthropic', 'generic')
         base_url: Base URL for the API
         token: API token/key
+        model: Model name to use
     
     Returns:
         Appropriate client instance
@@ -329,12 +334,12 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
             base_url = "http://localhost:8080"
     
     if api_type == 'openai':
-        return OpenAIClient(base_url, token)
+        return OpenAIClient(base_url, token, model)
     elif api_type == 'ollama':
-        return OllamaClient(base_url, token)
+        return OllamaClient(base_url, token, model)
     elif api_type == 'anthropic':
-        return AnthropicClient(base_url, token)
+        return AnthropicClient(base_url, token, model)
     elif api_type == 'generic':
-        return GenericClient(base_url, token)
+        return GenericClient(base_url, token, model)
     else:
         raise ValueError(f"Unknown API type: {api_type}")

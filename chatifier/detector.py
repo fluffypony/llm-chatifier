@@ -25,12 +25,13 @@ API_ENDPOINTS = {
 DEFAULT_PORTS = [8080, 8000, 3000, 5000, 11434, 80, 443]
 
 
-def detect_api(host: str, port: Optional[int] = None) -> Optional[Dict[str, str]]:
+def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False) -> Optional[Dict[str, str]]:
     """Detect API type by testing common endpoints.
     
     Args:
         host: Hostname or IP address
         port: Port number (if None, tries common ports)
+        prefer_https: Whether to prefer HTTPS (if URL was provided with https://)
     
     Returns:
         Dict with 'type', 'host', 'port', 'base_url' if detected, None otherwise
@@ -40,8 +41,9 @@ def detect_api(host: str, port: Optional[int] = None) -> Optional[Dict[str, str]
     for test_port in ports_to_try:
         logger.debug(f"Trying port {test_port}")
         
-        # Try HTTPS first, then HTTP
-        for use_https in [True, False]:
+        # Try protocols in order of preference
+        protocols = [True, False] if prefer_https else [True, False]
+        for use_https in protocols:
             base_url = build_base_url(host, test_port, use_https)
             logger.debug(f"Testing {base_url}")
             
