@@ -1,6 +1,7 @@
 """Terminal UI for llm-chatifier."""
 
 import sys
+import platform
 from typing import Dict, Any
 
 from rich.console import Console
@@ -27,13 +28,19 @@ INPUT_STYLE = Style.from_dict({
 USER_COLOR = "bright_black"  # This adapts to terminal theme
 
 
-def show_welcome(api_info: Dict[str, Any]):
+def show_welcome(api_info: Dict[str, Any], client=None):
     """Display welcome message with API info."""
     api_type = api_info.get('type', 'unknown')
     base_url = api_info.get('base_url', 'unknown')
     
     title = f"🤖 llm-chatifier - Connected to {api_type.upper()}"
-    content = f"Endpoint: [cyan]{base_url}[/cyan]\n\n"
+    content = f"Endpoint: [cyan]{base_url}[/cyan]\n"
+    
+    # Show model if available
+    if client and hasattr(client, 'model') and client.model:
+        content += f"Model: [green]{client.model}[/green]\n"
+    
+    content += "\n"
     content += "Commands:\n"
     content += "• [yellow]/exit[/yellow] or [yellow]Ctrl+C[/yellow] - Quit\n"
     content += "• [yellow]/clear[/yellow] - Clear conversation history\n"
@@ -60,15 +67,20 @@ def show_help():
 [bold]Tips:[/bold]
 • Just type your message and press Enter to chat
 • Use Ctrl+J for multi-line messages
+• In multi-line mode: Cmd+Enter (Mac) or Shift+Enter (Windows/Linux) to submit
 • The AI will remember the conversation context
 """
     console.print(Panel(help_text, title="Help", border_style="blue"))
 
 
-def get_user_input() -> str:
+def get_user_input(multiline_default: bool = False) -> str:
     """Get user input with support for multi-line and commands."""
     try:
-        # Set up key bindings for multi-line input
+        if multiline_default:
+            # Start in multiline mode
+            return get_multiline_input()
+        
+        # Set up key bindings for triggering multi-line input
         bindings = KeyBindings()
         
         @bindings.add('c-j')  # Ctrl+J (common alternative for Ctrl+Enter)
@@ -80,19 +92,42 @@ def get_user_input() -> str:
         
         # Check if user wants multi-line input
         if text == 'multiline':
-            console.print("[dim]Multi-line mode - press Ctrl+C when done:[/dim]")
-            lines = []
-            try:
-                while True:
-                    line = prompt("  ", style=INPUT_STYLE)
-                    lines.append(line)
-            except KeyboardInterrupt:
-                text = '\n'.join(lines)
+            return get_multiline_input()
         
         return text.strip()
     
     except (KeyboardInterrupt, EOFError):
         return '/exit'
+
+
+def get_multiline_input() -> str:
+    """Get multi-line input with proper exit keys."""
+    # Set up key bindings for exiting multiline mode
+    bindings = KeyBindings()
+    
+    # Platform-specific exit keys
+    system = platform.system()
+    if system == "Darwin":  # macOS
+        @bindings.add('c-m')  # Cmd+Enter (Ctrl+M in terminals)
+        def _(event):
+            event.app.exit()
+        console.print("[dim]Multi-line mode - press Cmd+Enter when done (or Ctrl+C):[/dim]")
+    else:  # Windows, Linux
+        @bindings.add('s-m')  # Shift+Enter (Shift+M)
+        def _(event):
+            event.app.exit()
+        console.print("[dim]Multi-line mode - press Shift+Enter when done (or Ctrl+C):[/dim]")
+    
+    lines = []
+    try:
+        while True:
+            line = prompt("  ", key_bindings=bindings, style=INPUT_STYLE)
+            lines.append(line)
+    except (KeyboardInterrupt, EOFError):
+        # Exit multiline mode
+        pass
+    
+    return '\n'.join(lines).strip()
 
 
 def display_response(response: str, render_markdown: bool = True):
@@ -123,21 +158,22 @@ def display_thinking():
         pass
 
 
-def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool = True):
+def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool = True, multiline_default: bool = False):
     """Main chat loop.
     
     Args:
         client: API client instance
         api_info: Information about the detected API
         render_markdown: Whether to render markdown in responses
+        multiline_default: Whether to use multiline input by default
     """
     # Show welcome message
-    show_welcome(api_info)
+    show_welcome(api_info, client)
     
     while True:
         try:
             # Get user input
-            user_input = get_user_input()
+            user_input = get_user_input(multiline_default)
             
             if not user_input:
                 continue

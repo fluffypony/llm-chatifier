@@ -21,7 +21,8 @@ from .utils import prompt_for_token, parse_host_input
 @click.option('--override', '-o', help='Force specific API type (openai, ollama, anthropic, gemini, cohere, generic)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
 @click.option('--no-markdown', is_flag=True, help='Disable markdown rendering')
-def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str], override: Optional[str], verbose: bool, no_markdown: bool):
+@click.option('--multiline', is_flag=True, help='Use multiline input by default')
+def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str], override: Optional[str], verbose: bool, no_markdown: bool, multiline: bool):
     """Simple chat client for LLM APIs.
     
     HOST: IP address, hostname, or full URL (default: localhost)
@@ -132,7 +133,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
         
         # 5. Start chat UI
         render_markdown = not no_markdown
-        run_chat(client, api_info, render_markdown)
+        run_chat(client, api_info, render_markdown, multiline)
         
     except KeyboardInterrupt:
         click.echo("\nGoodbye!")
