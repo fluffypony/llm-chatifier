@@ -1,7 +1,6 @@
 """Terminal UI for llm-chatifier."""
 
 import sys
-import platform
 from typing import Dict, Any
 
 from rich.console import Console
@@ -67,7 +66,7 @@ def show_help():
 [bold]Tips:[/bold]
 • Just type your message and press Enter to chat
 • Use Ctrl+J for multi-line messages
-• In multi-line mode: Cmd+Enter (Mac) or Shift+Enter (Windows/Linux) to submit
+• In multi-line mode: Ctrl+Enter or Ctrl+D to submit
 • The AI will remember the conversation context
 """
     console.print(Panel(help_text, title="Help", border_style="blue"))
@@ -105,18 +104,17 @@ def get_multiline_input() -> str:
     # Set up key bindings for exiting multiline mode
     bindings = KeyBindings()
     
-    # Platform-specific exit keys
-    system = platform.system()
-    if system == "Darwin":  # macOS
-        @bindings.add('c-m')  # Cmd+Enter (Ctrl+M in terminals)
-        def _(event):
-            event.app.exit()
-        console.print("[dim]Multi-line mode - press Cmd+Enter when done (or Ctrl+C):[/dim]")
-    else:  # Windows, Linux
-        @bindings.add('s-m')  # Shift+Enter (Shift+M)
-        def _(event):
-            event.app.exit()
-        console.print("[dim]Multi-line mode - press Shift+Enter when done (or Ctrl+C):[/dim]")
+    # Universal exit keys for all platforms
+    @bindings.add('c-m')  # Ctrl+Enter (Ctrl+M)
+    def _(event):
+        event.app.exit()
+    
+    # Try to add Ctrl+D as another exit option (more reliable than Shift+Enter)
+    @bindings.add('c-d')  # Ctrl+D
+    def _(event):
+        event.app.exit()
+    
+    console.print("[dim]Multi-line mode - press Ctrl+Enter or Ctrl+D when done (or Ctrl+C):[/dim]")
     
     lines = []
     try:
