@@ -202,6 +202,23 @@ def find_api_key_in_env(api_type: str, base_url: str = "") -> Optional[str]:
     Returns:
         Best matching API key or None if not found
     """
+    keys = find_all_api_keys_in_env(api_type, base_url)
+    return keys[0] if keys else None
+
+
+def find_all_api_keys_in_env(api_type: str, base_url: str = "") -> List[str]:
+    """Smart environment variable detection for API keys - returns all matches in priority order.
+    
+    Searches environment variables for API keys that match the detected API type.
+    Works across Linux, Windows, and macOS.
+    
+    Args:
+        api_type: Detected API type (openai, anthropic, etc.)
+        base_url: Base URL to help with matching (optional)
+    
+    Returns:
+        List of API keys in priority order (best match first)
+    """
     # Get all environment variables
     env_vars = dict(os.environ)
     
@@ -269,11 +286,13 @@ def find_api_key_in_env(api_type: str, base_url: str = "") -> Optional[str]:
         
         scored_vars.append((score, var_name, var_value))
     
-    # Sort by score (highest first) and return the best match
+    # Sort by score (highest first) and return all matches
     scored_vars.sort(reverse=True, key=lambda x: x[0])
     
-    if scored_vars and scored_vars[0][0] > 0:
-        return scored_vars[0][2]  # Return the value
+    # Return all keys that scored above 0, or fallback to all found keys
+    good_matches = [var_value for score, var_name, var_value in scored_vars if score > 0]
+    if good_matches:
+        return good_matches
     
-    # If no good matches, return the first API key found as fallback
-    return list(api_key_vars.values())[0] if api_key_vars else None
+    # If no good matches, return all API keys found as fallback
+    return list(api_key_vars.values()) if api_key_vars else []

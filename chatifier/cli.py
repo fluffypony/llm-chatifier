@@ -131,72 +131,106 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
             if verbose:
                 click.echo(f"Detected {api_info['type']} API at {api_info['base_url']}")
         
-        # 2. Try environment variable detection if no token provided
-        if not token:
-            env_token = find_api_key_in_env(api_info['type'], api_info.get('base_url', ''))
-            if env_token:
-                token = env_token
-                if verbose:
-                    click.echo(f"Found API key in environment variables")
+        # 2. Test API without auth first to see if auth is needed
+        client = create_client(api_info['type'], api_info.get('base_url'), None, model, verbose)
         
-        # 3. Create client
-        client = create_client(api_info['type'], api_info.get('base_url'), token, model, verbose)
+        if verbose:
+            click.echo("Testing API without authentication...")
         
-        # 4. Test API with simple prompt to see if it works
         try:
-            if verbose:
-                click.echo("Testing API with simple prompt...")
             response = client.test_with_simple_prompt()
             if verbose:
-                click.echo(f"API test successful: {response[:50]}...")
+                click.echo(f"API test successful without auth: {response[:50]}...")
+            # No auth needed - we're done!
+            
         except Exception as e:
             error_msg = str(e).lower()
-            if 'auth' in error_msg or 'token' in error_msg or 'unauthorized' in error_msg or 'api key' in error_msg:
-                if not token:
+            # Broader definition of "needs auth" - includes JSON parsing errors, empty responses, etc.
+            is_auth_error = (
+                'auth' in error_msg or 'token' in error_msg or 'unauthorized' in error_msg or 'api key' in error_msg or
+                'expecting value' in error_msg or  # JSON parsing errors often mean auth issues
+                'empty response' in error_msg or
+                'no content' in error_msg
+            )
+            
+            if is_auth_error:
+                if verbose:
                     click.echo("Authentication required.")
-                    token = prompt_for_token()
+                
+                # 3. Get auth details - try environment first, then prompt
+                working_token = None
+                if not token:
+                    from .utils import find_all_api_keys_in_env
+                    env_tokens = find_all_api_keys_in_env(api_info['type'], api_info.get('base_url', ''))
+                    
+                    if env_tokens:
+                        if verbose:
+                            click.echo(f"Found {len(env_tokens)} potential API keys in environment")
+                        
+                        # 4. Try test prompt with each auth token
+                        for i, env_token in enumerate(env_tokens):
+                            if verbose:
+                                click.echo(f"Trying API key {i+1}/{len(env_tokens)}...")
+                            
+                            client.token = env_token
+                            try:
+                                response = client.test_with_simple_prompt()
+                                if verbose:
+                                    click.echo(f"Authentication successful: {response[:50]}...")
+                                working_token = env_token
+                                break
+                            except Exception as auth_e:
+                                if verbose:
+                                    click.echo(f"Key {i+1} failed: {str(auth_e)[:100]}...")
+                                continue
+                
+                # If no env tokens worked, prompt for manual input
+                if not working_token:
+                    if not token:
+                        click.echo("Please provide an API key:")
+                        token = prompt_for_token()
+                    
                     client.token = token
                     try:
-                        if verbose:
-                            click.echo("Retrying with authentication...")
                         response = client.test_with_simple_prompt()
                         if verbose:
                             click.echo(f"Authentication successful: {response[:50]}...")
-                    except Exception as e2:
-                        click.echo(f"Authentication failed: {e2}")
-                        # Try to get models list to help user
+                        working_token = token
+                    except Exception as manual_auth_e:
+                        # 6. If test prompt still fails, try getting models list
+                        if verbose:
+                            click.echo("Test prompt failed, trying to get models list...")
+                        
                         try:
-                            if verbose:
-                                click.echo("Attempting to fetch models list for debugging...")
                             models = client.get_models()
                             if models:
-                                click.echo(f"Available models detected: {len(models)} models")
                                 if verbose:
-                                    click.echo(f"First few models: {', '.join(models[:3])}")
-                        except:
-                            pass
-                        sys.exit(1)
-                else:
-                    click.echo(f"Authentication failed: {e}")
-                    sys.exit(1)
+                                    click.echo(f"Found {len(models)} models: {', '.join(models[:3])}...")
+                                # TODO: Let user select model and retry
+                                click.echo("API accessible but default model may not work. Try specifying a model with -m")
+                            else:
+                                click.echo(f"Authentication failed: {manual_auth_e}")
+                                sys.exit(1)
+                        except Exception as models_e:
+                            click.echo(f"Authentication failed: {manual_auth_e}")
+                            sys.exit(1)
+                            
             else:
-                click.echo(f"API test failed: {e}")
-                # If it's a model error and we have a user-specified model, try to help
-                if 'invalid model' in str(e).lower() and model:
+                # Non-auth error - could be model issue
+                if 'model' in error_msg and model:
+                    if verbose:
+                        click.echo(f"Model '{model}' failed, trying to get available models...")
+                    
+                    # 6. Try getting models list to help user
                     try:
-                        if verbose:
-                            click.echo("Attempting to fetch available models...")
                         models = client.get_models()
                         if models:
-                            click.echo(f"Available models:")
-                            for i, model_name in enumerate(models[:10], 1):
-                                click.echo(f"  {i}. {model_name}")
-                            if len(models) > 10:
-                                click.echo(f"  ... and {len(models) - 10} more")
-                        else:
-                            click.echo("No models list available. Please check the API documentation.")
+                            click.echo(f"Model '{model}' not available. Available models: {', '.join(models[:5])}")
+                            sys.exit(1)
                     except:
                         pass
+                
+                click.echo(f"API error: {e}")
                 sys.exit(1)
         
         # 5. Handle model selection if no model specified

@@ -65,20 +65,20 @@ class BaseClient(ABC):
         Raises:
             Exception: If the API call fails (auth errors, network errors, etc.)
         """
-        # Default implementation: try to get models list as a test
-        # Individual clients can override this for more appropriate tests
+        # Try a simple chat completion - this is what actually matters
+        # Save current history to restore later
+        old_history = self.history.copy()
+        self.history = []  # Clear history for clean test
+        
         try:
-            models = self.get_models()
-            if models:
-                # Cache the models so we don't need to fetch again
-                self._cached_models = models
-                return f"API accessible. Found {len(models)} models."
-            else:
-                # Cache empty models list too
-                self._cached_models = []
-                return "API accessible but no models endpoint available."
+            response = self.send_message("Hi")
+            if response:
+                # Restore history
+                self.history = old_history
+                return f"API test successful: {response[:50]}..."
         except Exception as e:
-            # If getting models fails, that's our test result
+            # Restore history and re-raise - no fallback needed
+            self.history = old_history
             raise e
     
     def get_headers(self) -> Dict[str, str]:
@@ -134,40 +134,7 @@ class BaseClient(ABC):
 class OpenAIClient(BaseClient):
     """Client for OpenAI-compatible APIs (OpenAI, llama.cpp, vLLM, etc.)."""
     
-    def test_with_simple_prompt(self) -> str:
-        """Test OpenAI API with a real API call if model is specified."""
-        # If user specified a model, test it directly
-        if self.model:
-            try:
-                # Test the specific model with a minimal request
-                payload = {
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": "Hi"}],
-                    "max_tokens": 5
-                }
-                
-                url = f"{self.base_url}/v1/chat/completions"
-                headers = self.get_headers()
-                
-                self._log_http_details("POST", url, headers, payload)
-                response = self.client.post(url, headers=headers, json=payload)
-                self._log_http_details("POST", url, response=response)
-                
-                if response.status_code >= 400:
-                    error_msg = extract_error_message(response)
-                    if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
-                        raise Exception("Authentication required or invalid token")
-                    elif 'model' in error_msg.lower():
-                        raise Exception(f"Invalid model '{self.model}' - {error_msg}")
-                    else:
-                        raise Exception(f"API test failed: {error_msg}")
-                
-                return f"API test successful with model {self.model}"
-            except Exception as e:
-                raise e
-        else:
-            # Fall back to default behavior (get models)
-            return super().test_with_simple_prompt()
+
     
     def test_connection(self) -> None:
         """Test connection by checking models endpoint."""
@@ -234,6 +201,13 @@ class OpenAIClient(BaseClient):
             if is_auth_error(response):
                 raise Exception(f"Authentication failed: {error_msg}")
             raise Exception(f"API error: {error_msg}")
+        
+        # Check for empty response
+        if not response.text.strip():
+            if response.status_code == 204:
+                raise Exception("Authentication required: received empty 204 response")
+            else:
+                raise Exception("Empty response from API")
         
         try:
             data = response.json()
