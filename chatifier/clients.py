@@ -305,7 +305,10 @@ class OllamaClient(BaseClient):
     def get_models(self) -> List[str]:
         """Get available models from Ollama API."""
         url = f"{self.base_url}/api/tags"
+        
+        self._log_http_details("GET", url)
         response = self.client.get(url)
+        self._log_http_details("GET", url, response=response)
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
@@ -569,7 +572,10 @@ class GeminiClient(BaseClient):
             raise Exception("API key is required to fetch Gemini models")
             
         url = f"{self.base_url}/v1beta/models?key={self.token}"
+        
+        self._log_http_details("GET", url)
         response = self.client.get(url)
+        self._log_http_details("GET", url, response=response)
         
         if response.status_code >= 400:
             logger.warning(f"Failed to get models: {extract_error_message(response)}")
@@ -677,16 +683,43 @@ class CohereClient(BaseClient):
                 raise Exception(f"Failed to get models: {error_msg}")
         
         try:
-            data = response.json()
-            # Try different possible response formats
-            if isinstance(data, list):
-                return [model.get("name", model.get("id", str(model))) for model in data]
-            elif "models" in data:
-                return [model.get("name", model.get("id", str(model))) for model in data["models"]]
-            elif "data" in data:
-                return [model.get("name", model.get("id", str(model))) for model in data["data"]]
-            else:
-                return []
+            all_models = []
+            next_page_token = None
+            
+            while True:
+                data = response.json()
+                
+                # Extract models from response
+                models_data = []
+                if isinstance(data, list):
+                    models_data = data
+                elif "models" in data:
+                    models_data = data["models"]
+                elif "data" in data:
+                    models_data = data["data"]
+                
+                # Extract model names
+                for model in models_data:
+                    if isinstance(model, dict):
+                        name = model.get("name", model.get("id", str(model)))
+                        if name:
+                            all_models.append(name)
+                
+                # Check for pagination
+                next_page_token = data.get("next_page_token")
+                if not next_page_token:
+                    break
+                
+                # Fetch next page
+                next_url = f"{url}?page_token={next_page_token}"
+                self._log_http_details("GET", next_url, headers)
+                response = self.client.get(next_url, headers=headers)
+                self._log_http_details("GET", next_url, response=response)
+                
+                if response.status_code >= 400:
+                    break
+            
+            return sorted(all_models) if all_models else []
         except json.JSONDecodeError:
             return []
     
