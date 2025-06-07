@@ -2,8 +2,10 @@
 
 import getpass
 import logging
+import os
+import re
 from urllib.parse import urlparse
-from typing import Dict, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, TYPE_CHECKING, List
 
 if TYPE_CHECKING:
     import httpx
@@ -185,3 +187,93 @@ def parse_host_input(host_input: str) -> Tuple[str, Optional[int], bool]:
         return host_input, None, True  # Default to HTTPS for domain names
     else:
         return host_input, None, False  # Default to HTTP for IPs
+
+
+def find_api_key_in_env(api_type: str, base_url: str = "") -> Optional[str]:
+    """Smart environment variable detection for API keys.
+    
+    Searches environment variables for API keys that match the detected API type.
+    Works across Linux, Windows, and macOS.
+    
+    Args:
+        api_type: Detected API type (openai, anthropic, etc.)
+        base_url: Base URL to help with matching (optional)
+    
+    Returns:
+        Best matching API key or None if not found
+    """
+    # Get all environment variables
+    env_vars = dict(os.environ)
+    
+    # Filter for variables that look like API keys
+    api_key_vars = {}
+    for name, value in env_vars.items():
+        name_upper = name.upper()
+        if ('API_KEY' in name_upper or 
+            'APIKEY' in name_upper or 
+            'API_TOKEN' in name_upper or
+            ('TOKEN' in name_upper and len(value) > 10)):  # Basic sanity check
+            api_key_vars[name] = value
+    
+    if not api_key_vars:
+        return None
+    
+    # Score each API key variable based on how well it matches
+    scored_vars = []
+    
+    for var_name, var_value in api_key_vars.items():
+        score = 0
+        var_name_lower = var_name.lower()
+        
+        # Primary matching: API type name in variable name
+        if api_type.lower() in var_name_lower:
+            score += 100
+        
+        # Secondary matching: related terms
+        api_terms = {
+            'openai': ['openai', 'gpt'],
+            'anthropic': ['anthropic', 'claude'],
+            'openrouter': ['openrouter', 'router'],
+            'gemini': ['gemini', 'google', 'gcp', 'vertex'],
+            'cohere': ['cohere', 'co'],
+            'ollama': ['ollama']
+        }
+        
+        if api_type in api_terms:
+            for term in api_terms[api_type]:
+                if term in var_name_lower:
+                    score += 50
+        
+        # Tertiary matching: URL-based hints
+        if base_url:
+            url_lower = base_url.lower()
+            if 'openai' in url_lower and any(term in var_name_lower for term in ['openai', 'gpt']):
+                score += 30
+            elif 'anthropic' in url_lower and any(term in var_name_lower for term in ['anthropic', 'claude']):
+                score += 30
+            elif 'openrouter' in url_lower and 'router' in var_name_lower:
+                score += 30
+            elif 'google' in url_lower and any(term in var_name_lower for term in ['google', 'gemini', 'gcp']):
+                score += 30
+            elif 'cohere' in url_lower and 'cohere' in var_name_lower:
+                score += 30
+        
+        # Bonus for common naming patterns
+        if re.match(r'.*API_?KEY$', var_name.upper()):
+            score += 10
+        
+        # Penalty for very generic names
+        generic_names = ['API_KEY', 'APIKEY', 'TOKEN', 'API_TOKEN']
+        if var_name.upper() in generic_names:
+            score -= 20
+        
+        scored_vars.append((score, var_name, var_value))
+    
+    # Sort by score (highest first) and return the best match
+    scored_vars.sort(reverse=True, key=lambda x: x[0])
+    
+    if scored_vars and scored_vars[0][0] > 0:
+        return scored_vars[0][2]  # Return the value
+    
+    # If no good matches, return the first API key found as fallback
+    return list(api_key_vars.values())[0] if api_key_vars else None

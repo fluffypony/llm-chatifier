@@ -10,7 +10,7 @@ import click
 from .detector import detect_api
 from .clients import create_client
 from .ui import run_chat
-from .utils import prompt_for_token, parse_host_input, build_base_url
+from .utils import prompt_for_token, parse_host_input, build_base_url, find_api_key_in_env
 
 
 def select_model_from_list(models: list[str]) -> Optional[str]:
@@ -131,10 +131,18 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
             if verbose:
                 click.echo(f"Detected {api_info['type']} API at {api_info['base_url']}")
         
-        # 2. Create client
+        # 2. Try environment variable detection if no token provided
+        if not token:
+            env_token = find_api_key_in_env(api_info['type'], api_info.get('base_url', ''))
+            if env_token:
+                token = env_token
+                if verbose:
+                    click.echo(f"Found API key in environment variables")
+        
+        # 3. Create client
         client = create_client(api_info['type'], api_info.get('base_url'), token, model, verbose)
         
-        # 3. Test API with simple prompt to see if it works
+        # 4. Test API with simple prompt to see if it works
         try:
             if verbose:
                 click.echo("Testing API with simple prompt...")
@@ -175,7 +183,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 click.echo(f"API test failed: {e}")
                 sys.exit(1)
         
-        # 4. Handle model selection if no model specified
+        # 5. Handle model selection if no model specified
         if not client.model:
             try:
                 # Use cached models from the API test if available
@@ -208,7 +216,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 click.echo("Unable to retrieve models list. Please specify a model with --model flag.")
                 sys.exit(1)
         
-        # 5. Start chat UI
+        # 6. Start chat UI
         render_markdown = not no_markdown
         run_chat(client, api_info, render_markdown, multiline)
         
