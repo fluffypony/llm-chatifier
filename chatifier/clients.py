@@ -5,7 +5,10 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Optional
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None
 
 from .utils import extract_error_message, is_auth_error, build_base_url
 
@@ -17,6 +20,8 @@ class BaseClient(ABC):
     """Base class for all API clients."""
     
     def __init__(self, base_url: str, token: Optional[str] = None):
+        if httpx is None:
+            raise ImportError("httpx is required for API clients")
         self.base_url = base_url.rstrip('/')
         self.token = token
         self.history: List[Dict[str, str]] = []

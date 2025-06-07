@@ -4,13 +4,18 @@ import getpass
 import logging
 from typing import Dict, Optional, Tuple
 
-import httpx
+try:
+    import httpx
+    ResponseType = httpx.Response
+except ImportError:
+    httpx = None
+    ResponseType = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
 
 
-def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 5.0) -> Tuple[bool, Optional[httpx.Response]]:
+def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 5.0) -> Tuple[bool, Optional[ResponseType]]:
     """Try to connect to a URL and return success status.
     
     Args:
@@ -21,6 +26,9 @@ def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: 
     Returns:
         Tuple of (success, response) where success is bool and response is httpx.Response or None
     """
+    if httpx is None:
+        raise ImportError("httpx is required for try_connection")
+    
     try:
         with httpx.Client(timeout=timeout, verify=False) as client:
             # Try HEAD first (lighter), fall back to GET
@@ -70,7 +78,7 @@ def build_base_url(host: str, port: int, use_https: bool = True) -> str:
         return f"{scheme}://{host}:{port}"
 
 
-def extract_error_message(response: httpx.Response) -> str:
+def extract_error_message(response: ResponseType) -> str:
     """Extract a meaningful error message from an HTTP response.
     
     Args:
@@ -95,7 +103,7 @@ def extract_error_message(response: httpx.Response) -> str:
         return f"HTTP {response.status_code}: {response.reason_phrase}"
 
 
-def is_auth_error(response: httpx.Response) -> bool:
+def is_auth_error(response: ResponseType) -> bool:
     """Check if response indicates an authentication error.
     
     Args:

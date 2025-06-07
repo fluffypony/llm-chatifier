@@ -3,7 +3,10 @@
 import logging
 from typing import Dict, List, Optional, Tuple
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None
 
 from .utils import try_connection, build_base_url
 
