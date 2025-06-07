@@ -18,6 +18,8 @@ API_ENDPOINTS = {
     'openai': ['/v1/models', '/v1/chat/completions'],
     'anthropic': ['/v1/messages', '/v1/models'],
     'ollama': ['/api/tags', '/api/generate'],
+    'gemini': ['/v1beta/models', '/v1beta/models/gemini-pro:generateContent'],
+    'cohere': ['/v1/chat'],
     'generic': ['/chat', '/api/chat', '/message', '/api/message']
 }
 
