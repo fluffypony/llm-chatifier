@@ -1,3 +1,12 @@
 """llm-chatifier: Universal terminal chat client for LLM APIs."""
 
-__version__ = "0.1.0"
+try:
+    from importlib.metadata import version
+    __version__ = version("llm-chatifier")
+except ImportError:
+    # Fallback for older Python versions
+    try:
+        from importlib_metadata import version
+        __version__ = version("llm-chatifier")
+    except ImportError:
+        __version__ = "unknown"

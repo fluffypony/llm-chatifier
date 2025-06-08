@@ -7,6 +7,7 @@ from typing import Optional
 
 import click
 
+from . import __version__
 from .detector import detect_api
 from .clients import create_client
 from .ui import run_chat
@@ -80,13 +81,19 @@ def select_model_from_list(models: list[str]) -> Optional[str]:
 @click.option('--model', '-m', help='Model name to use')
 @click.option('--override', '-o', help='Force specific API type (openai, openrouter, ollama, anthropic, gemini, cohere, generic)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+@click.option('--version', is_flag=True, help='Show version and exit')
 @click.option('--no-markdown', is_flag=True, help='Disable markdown rendering')
 @click.option('--multiline', is_flag=True, help='Use multiline input by default')
-def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str], override: Optional[str], verbose: bool, no_markdown: bool, multiline: bool):
+def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str], override: Optional[str], verbose: bool, version: bool, no_markdown: bool, multiline: bool):
     """Simple chat client for LLM APIs.
     
     HOST: IP address, hostname, or full URL (default: localhost)
     """
+    # Handle version flag first
+    if version:
+        click.echo(f"llm-chatifier {__version__}")
+        sys.exit(0)
+    
     # Parse host input (could be IP, hostname, or full URL)
     parsed_host, parsed_port, use_https = parse_host_input(host)
     
