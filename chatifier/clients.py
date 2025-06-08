@@ -71,7 +71,7 @@ class BaseClient(ABC):
         self.history = []  # Clear history for clean test
         
         try:
-            response = self.send_message("Hi")
+            response = self.send_message("Reply with only a period: .")
             if response:
                 # Restore history
                 self.history = old_history
