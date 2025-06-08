@@ -70,7 +70,14 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
         
         # Try protocols in order of preference
         protocols = [True, False] if prefer_https else [True, False]
+        tls_failed_on_port = False
+        
         for use_https in protocols:
+            # Skip HTTPS if we already had a TLS failure on this port
+            if use_https and tls_failed_on_port:
+                logger.debug(f"Skipping HTTPS on port {test_port} due to previous TLS failure")
+                continue
+                
             base_url = build_base_url(host, test_port, use_https)
             logger.debug(f"Testing {base_url}")
             
@@ -94,7 +101,7 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
                         elif api_type in ['openai', 'openrouter', 'cohere']:
                             headers = {"Authorization": f"Bearer {token}"}
                     
-                    success, response = try_connection(url, headers)
+                    success, response, is_tls_failure = try_connection(url, headers)
                     
                     if success:
                         logger.debug(f"Found {api_type} API at {base_url}")
@@ -106,7 +113,17 @@ def detect_api(host: str, port: Optional[int] = None, prefer_https: bool = False
                             'use_https': use_https
                         }
                     
+                    # If we got a TLS failure on HTTPS, mark it and stop trying HTTPS for this port
+                    if is_tls_failure and use_https:
+                        logger.debug(f"TLS handshake failed on port {test_port}, will skip HTTPS for remaining endpoints")
+                        tls_failed_on_port = True
+                        break  # Break out of endpoint loop to try next protocol
+                    
                     logger.debug(f"Failed to connect to {url}")
+                
+                # If TLS failed, break out of API type loop too
+                if tls_failed_on_port and use_https:
+                    break
     
     logger.debug(f"No API detected on {host}")
     return None
@@ -127,7 +144,7 @@ def detect_specific_api(base_url: str, api_type: str) -> bool:
     
     for endpoint in API_ENDPOINTS[api_type]:
         url = f"{base_url}{endpoint}"
-        success, _ = try_connection(url)
+        success, _, _ = try_connection(url)
         if success:
             return True
     

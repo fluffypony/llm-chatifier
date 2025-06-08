@@ -19,7 +19,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 5.0) -> Tuple[bool, Optional['httpx.Response']]:
+def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 5.0) -> Tuple[bool, Optional['httpx.Response'], bool]:
     """Try to connect to a URL and return success status.
     
     Args:
@@ -28,7 +28,10 @@ def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: 
         timeout: Request timeout in seconds
     
     Returns:
-        Tuple of (success, response) where success is bool and response is httpx.Response or None
+        Tuple of (success, response, is_tls_failure) where:
+        - success is bool
+        - response is httpx.Response or None
+        - is_tls_failure is bool indicating if this was a TLS handshake failure
     """
     if httpx is None:
         raise ImportError("httpx is required for try_connection")
@@ -45,15 +48,19 @@ def try_connection(url: str, headers: Optional[Dict[str, str]] = None, timeout: 
                         if response.status_code == 405 and method == 'HEAD':
                             continue  # Try GET instead
                         logger.debug(f"{method} {url} -> {response.status_code}")
-                        return True, response
+                        return True, response, False
                 except httpx.RequestError:
                     continue
         
-        return False, None
+        return False, None, False
     
     except Exception as e:
+        error_str = str(e).lower()
+        is_tls_error = any(tls_term in error_str for tls_term in [
+            'ssl', 'tls', 'handshake', 'certificate', 'cert'
+        ])
         logger.debug(f"Connection to {url} failed: {e}")
-        return False, None
+        return False, None, is_tls_error
 
 
 def prompt_for_token() -> str:
@@ -233,7 +240,7 @@ def find_all_api_keys_in_env(api_type: str, base_url: str = "") -> List[str]:
             api_key_vars[name] = value
     
     if not api_key_vars:
-        return None
+        return []
     
     # Score each API key variable based on how well it matches
     scored_vars = []
