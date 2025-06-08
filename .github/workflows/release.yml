@@ -51,6 +51,7 @@ jobs:
         pyinstaller --onefile --name llm-chatifier chatifier/__main__.py
     
     - name: Create archive
+      shell: bash
       run: |
         if [ "${{ runner.os }}" = "Windows" ]; then
           7z a ${{ matrix.asset_name }}.zip dist/${{ matrix.artifact_name }}
