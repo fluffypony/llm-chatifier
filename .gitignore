@@ -6,3 +6,4 @@ dist/
 venv/
 .coverage
 .pytest_cache/
+build/
