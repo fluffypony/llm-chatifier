@@ -11,28 +11,28 @@ from . import __version__
 from .detector import detect_api
 from .clients import create_client
 from .ui import run_chat
-from .utils import prompt_for_token, parse_host_input, build_base_url, find_api_key_in_env
+from .utils import prompt_for_token, parse_host_input, build_base_url
 
 
 def select_model_from_list(models: list[str]) -> Optional[str]:
     """Select a model from a list displayed in columns."""
     if not models:
         return None
-    
+
     if len(models) == 1:
         return models[0]
-    
+
     # Reverse list to show newest models first
     models = list(reversed(models))
-    
+
     # Show all models
     click.echo(f"Available models ({len(models)} total, newest first):")
     click.echo()
-    
+
     # Display in 5 columns
     cols = 5
     rows = (len(models) + cols - 1) // cols
-    
+
     for row in range(rows):
         line_parts = []
         for col in range(cols):
@@ -47,17 +47,17 @@ def select_model_from_list(models: list[str]) -> Optional[str]:
             else:
                 line_parts.append(" " * 19)
         click.echo("  ".join(line_parts))
-    
+
     click.echo()
     click.echo("Select a model by number, or 'q' to quit:")
-    
+
     while True:
         try:
             choice = click.prompt("Model", type=str, show_default=False)
-            
+
             if choice.lower() == 'q':
                 return None
-            
+
             try:
                 model_idx = int(choice) - 1
                 if 0 <= model_idx < len(models):
@@ -69,7 +69,7 @@ def select_model_from_list(models: list[str]) -> Optional[str]:
                 if choice in models:
                     return choice
                 click.echo("Invalid selection. Please enter a number or 'q' to quit.")
-                
+
         except KeyboardInterrupt:
             return None
 
@@ -79,31 +79,32 @@ def select_model_from_list(models: list[str]) -> Optional[str]:
 @click.option('--port', '-p', type=int, help='Port number (overrides URL port)')
 @click.option('--token', '-t', help='API token')
 @click.option('--model', '-m', help='Model name to use')
-@click.option('--override', '-o', help='Force specific API type (openai, openrouter, ollama, anthropic, gemini, cohere, generic)')
+@click.option('--override', '-o',
+              help='Force specific API type (openai, openrouter, ollama, anthropic, gemini, cohere, generic)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
 @click.option('--version', is_flag=True, help='Show version and exit')
 @click.option('--no-markdown', is_flag=True, help='Disable markdown rendering')
 @click.option('--multiline', is_flag=True, help='Use multiline input by default')
-def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str], override: Optional[str], verbose: bool, version: bool, no_markdown: bool, multiline: bool):
+def main(host: str, port: Optional[int], token: Optional[str], model: Optional[str],
+         override: Optional[str], verbose: bool, version: bool, no_markdown: bool, multiline: bool):
     """Simple chat client for LLM APIs.
-    
+
     HOST: IP address, hostname, or full URL (default: localhost)
     """
     # Handle version flag first
     if version:
         click.echo(f"llm-chatifier {__version__}")
         sys.exit(0)
-    
+
     # Parse host input (could be IP, hostname, or full URL)
     parsed_host, parsed_port, use_https = parse_host_input(host)
-    
+
     # Port override: CLI --port takes precedence over URL port
     final_port = port if port is not None else parsed_port
-    
+
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
-        logger = logging.getLogger(__name__)
-    
+
     try:
         # 1. Detect or use override API type
         if override:
@@ -112,7 +113,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 base_url = build_base_url(parsed_host, final_port, use_https)
             else:
                 base_url = f"{'https' if use_https else 'http'}://{parsed_host}"
-            
+
             api_info = {
                 'type': override,
                 'host': parsed_host,
@@ -134,22 +135,22 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                     click.echo("Tried common ports: 8080, 8000, 3000, 5000, 11434, 80, 443")
                 click.echo("Use --override to force a specific API type")
                 sys.exit(1)
-            
+
             if verbose:
                 click.echo(f"Detected {api_info['type']} API at {api_info['base_url']}")
-        
+
         # 2. Test API without auth first to see if auth is needed
         client = create_client(api_info['type'], api_info.get('base_url'), None, model, verbose)
-        
+
         if verbose:
             click.echo("Testing API without authentication...")
-        
+
         try:
             response = client.test_with_simple_prompt()
             if verbose:
                 click.echo(f"API test successful without auth: {response[:50]}...")
             # No auth needed - we're done!
-            
+
         except Exception as e:
             error_msg = str(e).lower()
             # Broader definition of "needs auth" - includes JSON parsing errors, empty responses, etc.
@@ -159,26 +160,26 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 'empty response' in error_msg or
                 'no content' in error_msg
             )
-            
+
             if is_auth_error:
                 if verbose:
                     click.echo("Authentication required.")
-                
+
                 # 3. Get auth details - try environment first, then prompt
                 working_token = None
                 if not token:
                     from .utils import find_all_api_keys_in_env
                     env_tokens = find_all_api_keys_in_env(api_info['type'], api_info.get('base_url', ''))
-                    
+
                     if env_tokens:
                         if verbose:
                             click.echo(f"Found {len(env_tokens)} potential API keys in environment")
-                        
+
                         # 4. Try test prompt with each auth token
                         for i, env_token in enumerate(env_tokens):
                             if verbose:
                                 click.echo(f"Trying API key {i+1}/{len(env_tokens)}...")
-                            
+
                             client.token = env_token
                             try:
                                 response = client.test_with_simple_prompt()
@@ -188,34 +189,36 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                                 break
                             except Exception as auth_e:
                                 error_msg = str(auth_e).lower()
-                                
+
                                 # Check if this is a model requirement error (auth worked, but model needed)
-                                if any(phrase in error_msg for phrase in ['no models provided', 'model required', 'must specify model']):
+                                if any(phrase in error_msg for phrase in ['no models provided', 'model required',
+                                                                          'must specify model']):
                                     if verbose:
                                         click.echo(f"Key {i+1} authenticated but requires model specification")
                                     working_token = env_token
                                     # Don't break - we'll handle model selection later
                                     break
-                                
+
                                 # Check if this is an auth error (try next key)
-                                elif any(phrase in error_msg for phrase in ['auth', 'token', 'unauthorized', 'api key', 'invalid jwt', 'credentials']):
+                                elif any(phrase in error_msg for phrase in ['auth', 'token', 'unauthorized',
+                                                                            'api key', 'invalid jwt', 'credentials']):
                                     if verbose:
                                         click.echo(f"Key {i+1} authentication failed: {str(auth_e)[:100]}...")
                                     continue
-                                
+
                                 # Other errors (network, etc.) - stop trying
                                 else:
                                     if verbose:
                                         click.echo(f"API error with key {i+1}: {str(auth_e)[:100]}...")
                                     click.echo(f"API error: {auth_e}")
                                     sys.exit(1)
-                
+
                 # If no env tokens worked, prompt for manual input
                 if not working_token:
                     if not token:
                         click.echo("Please provide an API key:")
                         token = prompt_for_token()
-                    
+
                     client.token = token
                     try:
                         response = client.test_with_simple_prompt()
@@ -226,39 +229,40 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                         # 6. If test prompt still fails, try getting models list
                         if verbose:
                             click.echo("Test prompt failed, trying to get models list...")
-                        
+
                         try:
                             models = client.get_models()
                             if models:
                                 if verbose:
                                     click.echo(f"Found {len(models)} models: {', '.join(models[:3])}...")
                                 # TODO: Let user select model and retry
-                                click.echo("API accessible but default model may not work. Try specifying a model with -m")
+                                click.echo("API accessible but default model may not work. "
+                                           "Try specifying a model with -m")
                             else:
                                 click.echo(f"Authentication failed: {manual_auth_e}")
                                 sys.exit(1)
-                        except Exception as models_e:
+                        except Exception:
                             click.echo(f"Authentication failed: {manual_auth_e}")
                             sys.exit(1)
-                            
+
             else:
                 # Non-auth error - could be model issue
                 if 'model' in error_msg and model:
                     if verbose:
                         click.echo(f"Model '{model}' failed, trying to get available models...")
-                    
+
                     # 6. Try getting models list to help user
                     try:
                         models = client.get_models()
                         if models:
                             click.echo(f"Model '{model}' not available. Available models: {', '.join(models[:5])}")
                             sys.exit(1)
-                    except:
+                    except Exception:
                         pass
-                
+
                 click.echo(f"API error: {e}")
                 sys.exit(1)
-        
+
         # 5. Handle model selection if no model specified
         if not client.model:
             try:
@@ -269,7 +273,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                         click.echo("Using cached models from API test.")
                 else:
                     models = client.get_models()
-                
+
                 if len(models) == 0:
                     click.echo("No models available from API. Please specify a model with --model flag.")
                     click.echo("Example: python -m chatifier --model claude-3-sonnet-20240229")
@@ -291,11 +295,11 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                 click.echo(f"Error: {e}")
                 click.echo("Unable to retrieve models list. Please specify a model with --model flag.")
                 sys.exit(1)
-        
+
         # 6. Start chat UI
         render_markdown = not no_markdown
         run_chat(client, api_info, render_markdown, multiline)
-        
+
     except KeyboardInterrupt:
         click.echo("\nGoodbye!")
         sys.exit(0)
