@@ -127,12 +127,11 @@ def get_multiline_input(default_text: str = "") -> str:
         message="  ",
         multiline=True,
         key_bindings=bindings,
-        style=INPUT_STYLE,
-        default=default_text
+        style=INPUT_STYLE
     )
     
     try:
-        text = session.prompt()
+        text = session.prompt(default=default_text)
         return text.strip() if text else ""
     except (KeyboardInterrupt, EOFError):
         return ""
