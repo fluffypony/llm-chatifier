@@ -134,11 +134,16 @@ class BaseClient(ABC):
 class OpenAIClient(BaseClient):
     """Client for OpenAI-compatible APIs (OpenAI, llama.cpp, vLLM, etc.)."""
     
+    def __init__(self, base_url: str, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False, 
+                 chat_endpoint: str = "/v1/chat/completions", models_endpoint: str = "/v1/models"):
+        super().__init__(base_url, token, model, verbose)
+        self.chat_endpoint = chat_endpoint
+        self.models_endpoint = models_endpoint
 
     
     def test_connection(self) -> None:
         """Test connection by checking models endpoint."""
-        url = f"{self.base_url}/v1/models"
+        url = f"{self.base_url}{self.models_endpoint}"
         headers = self.get_headers()
         
         self._log_http_details("GET", url, headers)
@@ -153,7 +158,7 @@ class OpenAIClient(BaseClient):
     
     def get_models(self) -> List[str]:
         """Get available models from OpenAI-compatible API."""
-        url = f"{self.base_url}/v1/models"
+        url = f"{self.base_url}{self.models_endpoint}"
         headers = self.get_headers()
         
         self._log_http_details("GET", url, headers)
@@ -193,7 +198,7 @@ class OpenAIClient(BaseClient):
             "stream": False
         }
         
-        url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}{self.chat_endpoint}"
         response = self.client.post(url, headers=self.get_headers(), json=payload)
         
         if response.status_code >= 400:
@@ -815,7 +820,7 @@ class CohereClient(BaseClient):
             raise Exception(f"Invalid Cohere response format: {e}")
 
 
-def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False) -> BaseClient:
+def create_client(api_type: str, base_url: Optional[str] = None, token: Optional[str] = None, model: Optional[str] = None, verbose: bool = False, chat_endpoint: Optional[str] = None, models_endpoint: Optional[str] = None) -> BaseClient:
     """Factory function to create appropriate client.
     
     Args:
@@ -845,7 +850,10 @@ def create_client(api_type: str, base_url: Optional[str] = None, token: Optional
             base_url = "http://localhost:8080"
     
     if api_type == 'openai':
-        return OpenAIClient(base_url, token, model, verbose)
+        # Use configured endpoints if provided, otherwise use defaults
+        chat_ep = chat_endpoint or "/v1/chat/completions"
+        models_ep = models_endpoint or "/v1/models"
+        return OpenAIClient(base_url, token, model, verbose, chat_ep, models_ep)
     elif api_type == 'openrouter':
         return OpenRouterClient(base_url, token, model, verbose)
     elif api_type == 'ollama':

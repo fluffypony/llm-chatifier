@@ -139,8 +139,20 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
             if verbose:
                 click.echo(f"Detected {api_info['type']} API at {api_info['base_url']}")
 
-        # 2. Test API without auth first to see if auth is needed
-        client = create_client(api_info['type'], api_info.get('base_url'), None, model, verbose)
+        # 2. Test API without auth first to see if auth is needed  
+        # Get endpoint configuration from detection
+        from .detector import get_api_info
+        endpoint_config = get_api_info(api_info['type'], api_info['base_url'], api_info.get('detected_endpoint'))
+        
+        client = create_client(
+            api_info['type'], 
+            api_info.get('base_url'), 
+            None, 
+            model, 
+            verbose,
+            endpoint_config.get('chat_endpoint'),
+            endpoint_config.get('models_endpoint')
+        )
 
         if verbose:
             click.echo("Testing API without authentication...")
