@@ -72,12 +72,12 @@ def show_help():
     console.print(Panel(help_text, title="Help", border_style="blue"))
 
 
-def get_user_input(multiline_default: bool = False) -> str:
+def get_user_input(multiline_default: bool = False, default_text: str = "") -> str:
     """Get user input with support for multi-line and commands."""
     try:
         if multiline_default:
             # Start in multiline mode
-            return get_multiline_input()
+            return get_multiline_input(default_text)
         
         # Set up key bindings for triggering multi-line input
         bindings = KeyBindings()
@@ -87,11 +87,11 @@ def get_user_input(multiline_default: bool = False) -> str:
             event.app.exit(result='multiline')
         
         # Get initial input with simple cursor and light grey color
-        text = prompt("> ", key_bindings=bindings, style=INPUT_STYLE)
+        text = prompt("> ", key_bindings=bindings, style=INPUT_STYLE, default=default_text)
         
         # Check if user wants multi-line input
         if text == 'multiline':
-            return get_multiline_input()
+            return get_multiline_input(default_text)
         
         return text.strip()
     
@@ -99,7 +99,7 @@ def get_user_input(multiline_default: bool = False) -> str:
         return '/exit'
 
 
-def get_multiline_input() -> str:
+def get_multiline_input(default_text: str = "") -> str:
     """Get multi-line input with proper exit keys."""
     
     # Set up key bindings for multiline input
@@ -127,7 +127,8 @@ def get_multiline_input() -> str:
         message="  ",
         multiline=True,
         key_bindings=bindings,
-        style=INPUT_STYLE
+        style=INPUT_STYLE,
+        default=default_text
     )
     
     try:
@@ -177,10 +178,13 @@ def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool
     # Show welcome message
     show_welcome(api_info, client)
     
+    failed_message = None
+    
     while True:
         try:
-            # Get user input
-            user_input = get_user_input(multiline_default)
+            # Get user input (with restored text if previous attempt failed)
+            user_input = get_user_input(multiline_default, failed_message or "")
+            failed_message = None  # Clear after use
             
             if not user_input:
                 continue
@@ -214,31 +218,26 @@ def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool
                     
                 except Exception as e:
                     error_msg = str(e)
-                    display_error(f"Error: {error_msg}")
                     
-                    # If this is a retry, or auth error, don't auto-retry
-                    if retry_count > 0 or 'auth' in error_msg.lower() or 'token' in error_msg.lower():
-                        # If auth error, offer to retry with new token
-                        if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
-                            if confirm("Would you like to enter a new token?"):
-                                from .utils import prompt_for_token
-                                client.token = prompt_for_token()
-                                console.print("[green]Token updated. Please try your message again.[/green]")
-                        else:
-                            # For non-auth errors, restore the user's input
-                            console.print(f"[yellow]Your message was: {user_input}[/yellow]")
-                            console.print("[yellow]You can try rephrasing or use a different model.[/yellow]")
+                    # For auth errors, handle immediately
+                    if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
+                        display_error(f"Error: {error_msg}")
+                        if confirm("Would you like to enter a new token?"):
+                            from .utils import prompt_for_token
+                            client.token = prompt_for_token()
+                            console.print("[green]Token updated. Please try your message again.[/green]")
                         break
-                    else:
-                        # First attempt failed with non-auth error - retry once
+                    
+                    # For non-auth errors
+                    if retry_count == 0:
+                        # First failure - retry silently
                         retry_count += 1
-                        if confirm(f"Request failed. Retry? (attempt {retry_count + 1}/{max_retries + 1})"):
-                            console.print("[yellow]Retrying...[/yellow]")
-                            continue
-                        else:
-                            # User chose not to retry - restore input
-                            console.print(f"[yellow]Your message was: {user_input}[/yellow]")
-                            break
+                        continue
+                    else:
+                        # Second failure - show error and set up for restoration
+                        display_error(f"Error: {error_msg}")
+                        failed_message = user_input
+                        break
         
         except KeyboardInterrupt:
             console.print("\n[yellow]Goodbye![/yellow]")
