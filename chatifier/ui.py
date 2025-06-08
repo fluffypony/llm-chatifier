@@ -200,22 +200,45 @@ def run_chat(client: BaseClient, api_info: Dict[str, Any], render_markdown: bool
                 continue
             
             # Send message to API
-            try:
-                with console.status("[bold green]Thinking...", spinner="dots"):
-                    response = client.send_message(user_input)
-                
-                # Display response
-                display_response(response, render_markdown)
-                
-            except Exception as e:
-                display_error(str(e))
-                
-                # If auth error, offer to retry with new token
-                if 'auth' in str(e).lower() or 'token' in str(e).lower():
-                    if confirm("Would you like to enter a new token?"):
-                        from .utils import prompt_for_token
-                        client.token = prompt_for_token()
-                        console.print("[green]Token updated. Please try again.[/green]")
+            retry_count = 0
+            max_retries = 1
+            
+            while retry_count <= max_retries:
+                try:
+                    with console.status("[bold green]Thinking...", spinner="dots"):
+                        response = client.send_message(user_input)
+                    
+                    # Display response
+                    display_response(response, render_markdown)
+                    break  # Success - exit retry loop
+                    
+                except Exception as e:
+                    error_msg = str(e)
+                    display_error(f"Error: {error_msg}")
+                    
+                    # If this is a retry, or auth error, don't auto-retry
+                    if retry_count > 0 or 'auth' in error_msg.lower() or 'token' in error_msg.lower():
+                        # If auth error, offer to retry with new token
+                        if 'auth' in error_msg.lower() or 'token' in error_msg.lower():
+                            if confirm("Would you like to enter a new token?"):
+                                from .utils import prompt_for_token
+                                client.token = prompt_for_token()
+                                console.print("[green]Token updated. Please try your message again.[/green]")
+                        else:
+                            # For non-auth errors, restore the user's input
+                            console.print(f"[yellow]Your message was: {user_input}[/yellow]")
+                            console.print("[yellow]You can try rephrasing or use a different model.[/yellow]")
+                        break
+                    else:
+                        # First attempt failed with non-auth error - retry once
+                        retry_count += 1
+                        if confirm(f"Request failed. Retry? (attempt {retry_count + 1}/{max_retries + 1})"):
+                            console.print("[yellow]Retrying...[/yellow]")
+                            continue
+                        else:
+                            # User chose not to retry - restore input
+                            console.print(f"[yellow]Your message was: {user_input}[/yellow]")
+                            break
         
         except KeyboardInterrupt:
             console.print("\n[yellow]Goodbye![/yellow]")

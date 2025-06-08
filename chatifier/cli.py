@@ -218,12 +218,12 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                                         click.echo(f"Key {i+1} authentication failed: {str(auth_e)[:100]}...")
                                     continue
 
-                                # Other errors (network, etc.) - stop trying
+                                # Other errors (model issues, validation, etc.) - try next key
                                 else:
                                     if verbose:
                                         click.echo(f"API error with key {i+1}: {str(auth_e)[:100]}...")
-                                    click.echo(f"API error: {auth_e}")
-                                    sys.exit(1)
+                                    # Don't exit - continue trying other keys
+                                    continue
 
                 # If no env tokens worked, prompt for manual input
                 if not working_token:
@@ -247,33 +247,37 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                             if models:
                                 if verbose:
                                     click.echo(f"Found {len(models)} models: {', '.join(models[:3])}...")
-                                # TODO: Let user select model and retry
-                                click.echo("API accessible but default model may not work. "
-                                           "Try specifying a model with -m")
+                                # API is accessible but might need model specification
+                                working_token = token
+                                if verbose:
+                                    click.echo("API accessible but default model may not work. Continuing...")
                             else:
-                                click.echo(f"Authentication failed: {manual_auth_e}")
-                                sys.exit(1)
-                        except Exception:
-                            click.echo(f"Authentication failed: {manual_auth_e}")
-                            sys.exit(1)
+                                if verbose:
+                                    click.echo(f"Could not get models: {manual_auth_e}")
+                                # Still try to continue - maybe models endpoint doesn't work but chat does
+                                working_token = token
+                        except Exception as models_e:
+                            if verbose:
+                                click.echo(f"Could not get models: {models_e}")
+                            # Still try to continue - maybe models endpoint doesn't work but chat does
+                            working_token = token
 
             else:
-                # Non-auth error - could be model issue
-                if 'model' in error_msg and model:
+                # Non-auth error - could be model issue, try to proceed anyway
+                if verbose:
+                    click.echo(f"Initial test failed: {str(e)[:100]}...")
+                    click.echo("Will try to continue despite test failure...")
+                
+                # Try to get available models for better error messages later
+                try:
+                    models = client.get_models()
+                    if models and verbose:
+                        click.echo(f"Found {len(models)} available models")
+                except Exception:
                     if verbose:
-                        click.echo(f"Model '{model}' failed, trying to get available models...")
-
-                    # 6. Try getting models list to help user
-                    try:
-                        models = client.get_models()
-                        if models:
-                            click.echo(f"Model '{model}' not available. Available models: {', '.join(models[:5])}")
-                            sys.exit(1)
-                    except Exception:
-                        pass
-
-                click.echo(f"API error: {e}")
-                sys.exit(1)
+                        click.echo("Could not retrieve models list")
+                
+                # Continue anyway - maybe the issue will resolve in actual chat
 
         # 5. Handle model selection if no model specified
         if not client.model:
@@ -287,9 +291,9 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                     models = client.get_models()
 
                 if len(models) == 0:
-                    click.echo("No models available from API. Please specify a model with --model flag.")
-                    click.echo("Example: python -m chatifier --model claude-3-sonnet-20240229")
-                    sys.exit(1)
+                    if verbose:
+                        click.echo("No models available from API, will use default model.")
+                    client.model = "gpt-3.5-turbo"  # Fallback default
                 elif len(models) == 1:
                     client.model = models[0]
                     if verbose:
@@ -304,9 +308,10 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
                         click.echo("No model selected.")
                         sys.exit(0)
             except Exception as e:
-                click.echo(f"Error: {e}")
-                click.echo("Unable to retrieve models list. Please specify a model with --model flag.")
-                sys.exit(1)
+                if verbose:
+                    click.echo(f"Error getting models: {e}")
+                    click.echo("Using default model.")
+                client.model = client.model or "gpt-3.5-turbo"  # Fallback default
 
         # 6. Start chat UI
         render_markdown = not no_markdown

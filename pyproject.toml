@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "llm-chatifier"
-version = "0.2.1"
+version = "0.2.2"
 description = "A universal terminal chat client that auto-detects and connects to any chat API endpoint"
 readme = "README.md"
 requires-python = ">=3.8"
