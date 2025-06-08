@@ -101,7 +101,7 @@ def main(host: str, port: Optional[int], token: Optional[str], model: Optional[s
     final_port = port if port is not None else parsed_port
     
     if verbose:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.DEBUG)
         logger = logging.getLogger(__name__)
     
     try:
